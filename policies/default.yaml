@@ -76,7 +76,7 @@ use_cases:
     require_citations: true
     allowed_models: [claude-sonnet-5, claude-opus-5, gpt-4o]
     rules:
-      - {axis: groundedness, threshold: 0.30, action: escalate}   # alpha=0.02
+      - {axis: groundedness, threshold: 0.20, action: escalate}   # alpha=0.02
       - {axis: uncertainty,  threshold: 0.40, action: escalate}
       - {axis: bias,         threshold: 0.25, action: escalate,
          note: "adverse action on a protected attribute is a legal event"}

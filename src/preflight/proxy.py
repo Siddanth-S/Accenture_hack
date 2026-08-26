@@ -296,14 +296,22 @@ async def api_chat(request: Request):
     session_id = body.get("session_id", "chat-default")
     turn      = int(body.get("turn", 1))
     model     = body.get("model", "claude-sonnet-5")
-    messages  = body.get("messages", [{"role": "user", "content": prompt}])
+    messages  = body.get("messages") or [{"role": "user", "content": prompt}]
 
     if not prompt:
         return JSONResponse({"error": "prompt is required"}, status_code=400)
 
+    use_case    = body.get("use_case", "default")
+    raw_sources = body.get("sources", [])
+    # Accept either {"id":..,"text":..} dicts or plain strings
+    sources = [
+        s if isinstance(s, dict) else {"id": f"src-{i}", "text": s}
+        for i, s in enumerate(raw_sources)
+    ]
+
     ctx = RequestContext(
-        session_id=session_id, use_case="default", turn=turn,
-        requested_model=model, sources=[],
+        session_id=session_id, use_case=use_case, turn=turn,
+        requested_model=model, sources=sources,
     )
 
     pre_findings, pre_faults, rd = _engine.preflight(ctx, prompt)
@@ -333,16 +341,28 @@ async def api_chat(request: Request):
         tokens_out = max(1, len(response_text.split()) * 4 // 3)
     else:
         upstream_model = _upstream_model(rd.routed)
+        _FALLBACK_MODEL = "openai/gpt-4o-mini"
+
+        async def _call_upstream(client: httpx.AsyncClient, model_id: str) -> dict:
+            r = await client.post(
+                f"{UPSTREAM_BASE_URL}/chat/completions",
+                json={"model": model_id, "messages": messages, "stream": False},
+                headers={"Authorization": f"Bearer {UPSTREAM_API_KEY}",
+                         "Content-Type": "application/json"},
+            )
+            r.raise_for_status()
+            return r.json()
+
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    f"{UPSTREAM_BASE_URL}/chat/completions",
-                    json={"model": upstream_model, "messages": messages, "stream": False},
-                    headers={"Authorization": f"Bearer {UPSTREAM_API_KEY}",
-                             "Content-Type": "application/json"},
-                )
-                resp.raise_for_status()
-                data = resp.json()
+                try:
+                    data = await _call_upstream(client, upstream_model)
+                except httpx.HTTPStatusError as exc:
+                    # 402 = quota exceeded — fall back to cheapest available model
+                    if exc.response.status_code == 402 and upstream_model != _FALLBACK_MODEL:
+                        data = await _call_upstream(client, _FALLBACK_MODEL)
+                    else:
+                        raise
                 response_text = data["choices"][0]["message"]["content"]
                 usage = data.get("usage", {})
                 tokens_in  = usage.get("prompt_tokens", tokens_in)
