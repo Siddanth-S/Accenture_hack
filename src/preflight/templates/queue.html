@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %} — Review Queue{% endblock %}
+
+{% block content %}
+
+<div style="display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.25rem;">
+  <h1 class="disp" style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.14em;
+                           text-transform: uppercase; color: var(--muted);">
+    Review Queue
+  </h1>
+  <span style="font-size: 0.68rem; color: var(--dimmer);">
+    escalations &amp; blocks · ranked by expected harm
+  </span>
+  <span style="margin-left: auto; font-size: 0.72rem; color: var(--muted);">
+    {{ items | length }} item{% if items | length != 1 %}s{% endif %}
+  </span>
+</div>
+
+{% if not items %}
+<div style="padding: 3rem 0; text-align: center; color: var(--dimmer); font-size: 0.82rem;
+            border: 1px dashed var(--border); border-radius: 4px;">
+  Queue is empty — no escalations or blocks recorded.
+</div>
+{% else %}
+
+<!-- Table -->
+<div style="background: var(--panel-raised); border: 1px solid var(--border); border-radius: 4px; overflow: hidden;">
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem;">
+    <thead>
+      <tr style="border-bottom: 1px solid var(--border);">
+        {% for col in ["Harm", "Session", "Turn", "Use case", "Action", "Reason", "Latency"] %}
+        <th style="padding: 0.6rem 0.9rem; text-align: left; font-size: 0.65rem;
+                   font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+                   color: var(--muted);" class="disp">
+          {{ col }}
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      {% set action_color = {
+        "escalate": "var(--warning)",
+        "block":    "var(--warning)",
+        "redact":   "var(--caution)",
+        "regenerate":"var(--caution)",
+      }.get(item.action, "var(--muted)") %}
+      <tr style="border-bottom: 1px solid var(--border);
+                 {% if loop.last %}border-bottom: none;{% endif %}">
+        <!-- Expected harm -->
+        <td style="padding: 0.65rem 0.9rem;">
+          <span class="mono" style="font-size: 0.72rem; color: {{ action_color }}; font-weight: 500;">
+            {{ item.expected_harm }}
+          </span>
+        </td>
+        <!-- Session ID -->
+        <td style="padding: 0.65rem 0.9rem;">
+          <span class="mono" style="font-size: 0.7rem; color: #8891A0;">
+            {{ item.session_id[:16] }}
+          </span>
+        </td>
+        <!-- Turn -->
+        <td style="padding: 0.65rem 0.9rem;">
+          <span class="mono" style="color: #8891A0;">{{ item.turn }}</span>
+        </td>
+        <!-- Use case -->
+        <td style="padding: 0.65rem 0.9rem;">
+          <span style="font-size: 0.7rem; color: var(--muted); text-transform: uppercase;
+                       letter-spacing: 0.05em;">
+            {{ item.use_case }}
+          </span>
+        </td>
+        <!-- Action badge -->
+        <td style="padding: 0.65rem 0.9rem;">
+          <span class="disp" style="font-size: 0.68rem; font-weight: 700;
+                                    letter-spacing: 0.06em; text-transform: uppercase;
+                                    color: {{ action_color }};">
+            {{ item.action }}
+          </span>
+        </td>
+        <!-- Reason -->
+        <td style="padding: 0.65rem 0.9rem; max-width: 380px;">
+          <span style="font-size: 0.72rem; color: #8891A0; line-height: 1.4;">
+            {{ item.reason[:120] }}{% if item.reason | length > 120 %}…{% endif %}
+          </span>
+        </td>
+        <!-- Latency -->
+        <td style="padding: 0.65rem 0.9rem;">
+          <span class="mono" style="font-size: 0.7rem; color: var(--muted);">
+            {{ item.latency_ms | round(1) }}ms
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

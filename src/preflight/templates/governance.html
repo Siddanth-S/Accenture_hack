@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %} — Governance{% endblock %}
+
+{% block content %}
+
+<div style="display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem;">
+  <h1 class="disp" style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.14em;
+                           text-transform: uppercase; color: var(--muted);">
+    Governance
+  </h1>
+  <span style="font-size: 0.68rem; color: var(--dimmer);">
+    policy · {{ policy_id }} · jurisdiction {{ jurisdiction }}
+  </span>
+</div>
+
+<!-- Summary cards -->
+<div style="display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap;">
+  {% set actions = stats.get("actions", {}) %}
+  {% set total   = stats.records %}
+  {% set flagged = actions.get("escalate", 0) + actions.get("block", 0) %}
+  {% set flag_rate = (flagged / total * 100) | round(1) if total > 0 else 0 %}
+  {% for label, value, sub, color in [
+       ("Total decisions",   total,                   "processed by engine",  "var(--muted)"),
+       ("Flag rate",         flag_rate|string ~ "%",  "escalate + block",     "var(--warning)" if flagged > 0 else "var(--muted)"),
+       ("Avg latency",       stats.avg_latency_ms | round(1)|string ~ " ms", "p50 engine overhead", "var(--muted)"),
+       ("Cost tracked",      "$" ~ stats.total_cost_usd | round(5)|string,   "session-level ledger", "var(--muted)"),
+     ] %}
+  <div style="background: var(--panel-raised); border: 1px solid var(--border);
+              border-radius: 4px; padding: 0.9rem 1.25rem; min-width: 150px;">
+    <div class="mono" style="font-size: 1.4rem; font-weight: 500; color: {{ color }}; line-height: 1;">
+      {{ value }}
+    </div>
+    <div class="disp" style="font-size: 0.68rem; color: var(--muted); letter-spacing: 0.07em;
+                              text-transform: uppercase; margin-top: 4px;">
+      {{ label }}
+    </div>
+    <div style="font-size: 0.65rem; color: var(--dimmer); margin-top: 2px;">{{ sub }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Charts row -->
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; margin-bottom: 2rem;">
+
+  <!-- Action distribution donut -->
+  <div style="background: var(--panel-raised); border: 1px solid var(--border);
+              border-radius: 4px; padding: 1rem;">
+    <div class="disp" style="font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+                              text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;">
+      Action Distribution
+    </div>
+    <div id="chart-actions" style="height: 220px;"></div>
+  </div>
+
+  <!-- Latency histogram -->
+  <div style="background: var(--panel-raised); border: 1px solid var(--border);
+              border-radius: 4px; padding: 1rem;">
+    <div class="disp" style="font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+                              text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;">
+      Latency Distribution (ms) — lexical fallback · no NLI model
+    </div>
+    <div id="chart-latency" style="height: 220px;"></div>
+  </div>
+</div>
+
+<!-- Policy rules table -->
+<div style="margin-bottom: 1rem;">
+  <div class="disp" style="font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+                            text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;">
+    Active Policy Rules — default use case
+  </div>
+  <div style="background: var(--panel-raised); border: 1px solid var(--border);
+              border-radius: 4px; overflow: hidden;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.76rem;">
+      <thead>
+        <tr style="border-bottom: 1px solid var(--border);">
+          {% for col in ["Axis", "Scope", "Threshold", "Action", "Note"] %}
+          <th class="disp" style="padding: 0.55rem 0.9rem; text-align: left; font-size: 0.63rem;
+                                   font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+                                   color: var(--muted);">{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for axis, thresh, scope, action, note in [
+          ("groundedness",        "0.55", "response", "regenerate", "α=0.10"),
+          ("privacy",             "0.50", "response", "redact",     ""),
+          ("injection",           "0.70", "response", "escalate",   ""),
+          ("escalation_gradient", "0.55", "session",  "escalate",   "trajectory signal — invisible to stateless"),
+          ("contamination",       "0.50", "session",  "regenerate", "ungrounded claim inheritance"),
+        ] %}
+        {% set action_color = {
+          "regenerate": "var(--caution)",
+          "redact":     "var(--caution)",
+          "escalate":   "var(--warning)",
+          "block":      "var(--warning)",
+        }.get(action, "var(--muted)") %}
+        <tr style="border-bottom: 1px solid var(--border); {% if loop.last %}border-bottom:none;{% endif %}">
+          <td class="mono" style="padding: 0.6rem 0.9rem; color: #8891A0;">{{ axis }}</td>
+          <td style="padding: 0.6rem 0.9rem;">
+            <span style="font-size: 0.65rem; letter-spacing: 0.06em; text-transform: uppercase;
+                         color: {% if scope == 'session' %}var(--caution){% else %}var(--muted){% endif %};">
+              {{ scope }}
+            </span>
+          </td>
+          <td class="mono" style="padding: 0.6rem 0.9rem; color: #D4D8E0;">≥ {{ thresh }}</td>
+          <td class="disp" style="padding: 0.6rem 0.9rem; font-weight: 700; font-size: 0.7rem;
+                                   letter-spacing: 0.06em; text-transform: uppercase;
+                                   color: {{ action_color }};">{{ action }}</td>
+          <td style="padding: 0.6rem 0.9rem; font-size: 0.68rem; color: var(--dimmer);">{{ note }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script>
+const CLEARED = "#4FA88B";
+const CAUTION = "#E0A32E";
+const WARNING = "#D2452F";
+const MUTED   = "#555C6B";
+const PANEL   = "#1F2229";
+const TEXT    = "#C8CDD8";
+
+const ACTION_COLORS = {
+  pass:               CLEARED,
+  pass_with_citations:CLEARED,
+  redact:             CAUTION,
+  regenerate:         CAUTION,
+  escalate:           WARNING,
+  block:              WARNING,
+};
+
+// ── Donut chart ─────────────────────────────────────────────────
+const actionsRaw = {{ actions_json | safe }};
+const donut = echarts.init(document.getElementById("chart-actions"), null,
+                           { renderer: "svg" });
+donut.setOption({
+  backgroundColor: "transparent",
+  tooltip: {
+    trigger: "item",
+    formatter: "{b}: {c} ({d}%)",
+    backgroundColor: PANEL,
+    borderColor: "#2A2D35",
+    textStyle: { color: TEXT, fontFamily: "IBM Plex Mono", fontSize: 11 },
+  },
+  legend: {
+    orient: "vertical", right: "5%", top: "center",
+    textStyle: { color: TEXT, fontSize: 11, fontFamily: "IBM Plex Sans" },
+    itemWidth: 10, itemHeight: 10,
+  },
+  series: [{
+    type: "pie", radius: ["42%", "68%"],
+    center: ["38%", "50%"],
+    label: { show: false },
+    data: actionsRaw.map(d => ({
+      name: d.name,
+      value: d.value,
+      itemStyle: { color: ACTION_COLORS[d.name] || MUTED },
+    })),
+    emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" } },
+  }],
+});
+
+// ── Latency bar ──────────────────────────────────────────────────
+const latBuckets = {{ lat_buckets_json | safe }};
+const latLabels  = {{ lat_labels_json | safe }};
+const latChart   = echarts.init(document.getElementById("chart-latency"), null,
+                                { renderer: "svg" });
+latChart.setOption({
+  backgroundColor: "transparent",
+  grid: { left: 40, right: 20, top: 10, bottom: 28 },
+  tooltip: {
+    trigger: "axis",
+    backgroundColor: PANEL, borderColor: "#2A2D35",
+    textStyle: { color: TEXT, fontFamily: "IBM Plex Mono", fontSize: 11 },
+    formatter: params =>
+      `${params[0].name} ms<br>${params[0].value} request${params[0].value !== 1 ? "s" : ""}`,
+  },
+  xAxis: {
+    type: "category", data: latLabels,
+    axisLabel: { color: MUTED, fontSize: 10, fontFamily: "IBM Plex Mono" },
+    axisLine: { lineStyle: { color: "#2A2D35" } },
+    splitLine: { show: false },
+  },
+  yAxis: {
+    type: "value", minInterval: 1,
+    axisLabel: { color: MUTED, fontSize: 10, fontFamily: "IBM Plex Mono" },
+    axisLine: { show: false },
+    splitLine: { lineStyle: { color: "#2A2D35", type: "dashed" } },
+  },
+  series: [{
+    type: "bar", data: latBuckets,
+    itemStyle: { color: CLEARED, borderRadius: [2, 2, 0, 0] },
+    emphasis: { itemStyle: { color: "#5FC89B" } },
+    barMaxWidth: 36,
+  }],
+});
+
+window.addEventListener("resize", () => {
+  donut.resize(); latChart.resize();
+});
+</script>
+{% endblock %}

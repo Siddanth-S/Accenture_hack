@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %} — Session{% endblock %}
+
+{% block content %}
+
+{% set ACTION_COLOR = {
+  "pass":               "var(--cleared)",
+  "pass_with_citations":"var(--cleared)",
+  "redact":             "var(--caution)",
+  "regenerate":         "var(--caution)",
+  "escalate":           "var(--warning)",
+  "block":              "var(--warning)",
+} %}
+
+{% set RISK_LABEL = {
+  "groundedness": "Groundedness",
+  "uncertainty":  "Uncertainty",
+  "bias":         "Bias",
+  "privacy":      "Privacy",
+  "injection":    "Injection",
+  "cost":         "Cost",
+} %}
+
+<!-- Back link + header -->
+<div style="margin-bottom: 1.25rem;">
+  <a href="/console/live" style="font-size: 0.75rem; color: var(--muted);
+                                  text-decoration: none; letter-spacing: 0.04em;">
+    ← Live
+  </a>
+</div>
+
+<div style="display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem;
+            flex-wrap: wrap;">
+  <h1 class="disp" style="font-size: 1rem; font-weight: 700; color: #fff; letter-spacing: 0.06em;">
+    {{ scenario_name }}
+  </h1>
+  <span class="mono" style="font-size: 0.72rem; color: var(--muted);">
+    {{ session_id }}
+  </span>
+  <span style="font-size: 0.68rem; color: var(--dimmer);">
+    {{ turns | length }} turn{% if turns | length != 1 %}s{% endif %}
+  </span>
+  {% if not has_prompts %}
+  <span style="font-size: 0.68rem; color: var(--dimmer); margin-left: auto;">
+    replay this session to see prompt / response text
+  </span>
+  {% endif %}
+</div>
+
+<!-- Turn cards -->
+{% for t in turns %}
+{% set ac = ACTION_COLOR.get(t.action, "var(--muted)") %}
+{% set is_flagged = t.action in ["escalate", "block"] %}
+{% set is_caution = t.action in ["redact", "regenerate"] %}
+
+<div style="margin-bottom: 1.25rem; border: 1px solid var(--border);
+            border-radius: 5px; overflow: hidden;">
+
+  <!-- Turn header bar -->
+  <div style="background: var(--panel-raised); padding: 0.6rem 1rem;
+              display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+              border-bottom: 1px solid var(--border);">
+
+    <!-- Turn badge -->
+    <span class="disp mono" style="font-size: 0.72rem; font-weight: 700;
+                                    background: var(--panel); padding: 0.2rem 0.55rem;
+                                    border-radius: 3px; color: #8891A0; letter-spacing: 0.05em;">
+      T{{ t.turn }}
+    </span>
+
+    <!-- Action badge -->
+    <span class="disp" style="font-size: 0.72rem; font-weight: 700;
+                               letter-spacing: 0.08em; text-transform: uppercase;
+                               color: {{ ac }};">
+      {{ t.action }}
+    </span>
+
+    <!-- Model routing -->
+    {% if t.model_requested %}
+    <span style="font-size: 0.7rem; color: var(--muted);">
+      <span class="mono" style="color: #8891A0;">{{ t.model_requested }}</span>
+      {% if t.model_routed and t.model_routed != t.model_requested %}
+        <span style="color: var(--dimmer);"> → </span>
+        <span class="mono" style="color: var(--cleared);">{{ t.model_routed }}</span>
+        {% if t.cost_saved_usd > 0 %}
+        <span style="font-size: 0.65rem; color: var(--cleared);"> (${{ "%.5f"|format(t.cost_saved_usd) }} saved)</span>
+        {% endif %}
+      {% else %}
+        <span style="color: var(--dimmer);"> → </span>
+        <span class="mono" style="color: #8891A0;">{{ t.model_routed or t.model_requested }}</span>
+      {% endif %}
+    </span>
+    {% endif %}
+
+    <!-- Stakes badge -->
+    <span style="font-size: 0.65rem; color: var(--dimmer); text-transform: uppercase;
+                 letter-spacing: 0.07em;">{{ t.stakes }}</span>
+
+    <!-- Latency + cost -->
+    <span class="mono" style="margin-left: auto; font-size: 0.68rem; color: var(--muted);">
+      {{ t.latency_ms }}ms
+      {% if t.cost_usd > 0 %}&nbsp;·&nbsp;${{ "%.5f"|format(t.cost_usd) }}{% endif %}
+    </span>
+  </div>
+
+  <!-- Prompt + Response -->
+  {% if t.prompt or t.response %}
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0;">
+
+    <!-- Prompt -->
+    <div style="padding: 0.9rem 1rem; border-right: 1px solid var(--border);
+                border-bottom: 1px solid var(--border);">
+      <div class="disp" style="font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
+                                text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem;">
+        User Prompt
+      </div>
+      <div style="font-size: 0.78rem; line-height: 1.55; color: #C8CDD8; white-space: pre-wrap;">{{ t.prompt or "—" }}</div>
+    </div>
+
+    <!-- Response -->
+    <div style="padding: 0.9rem 1rem; border-bottom: 1px solid var(--border);
+                background: {% if is_flagged %}rgba(210,69,47,0.04){% elif is_caution %}rgba(224,163,46,0.04){% else %}transparent{% endif %};">
+      <div class="disp" style="font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
+                                text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem;">
+        Model Response
+      </div>
+      <div style="font-size: 0.78rem; line-height: 1.55; color: #C8CDD8; white-space: pre-wrap;">{{ t.response or "—" }}</div>
+    </div>
+
+  </div>
+  {% endif %}
+
+  <!-- Risk + Session Risk + Findings -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0;
+              border-bottom: {% if t.triggered_by or t.degraded %}1px solid var(--border){% else %}none{% endif %};">
+
+    <!-- Risk Vector -->
+    <div style="padding: 0.85rem 1rem; border-right: 1px solid var(--border);">
+      <div class="disp" style="font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
+                                text-transform: uppercase; color: var(--muted); margin-bottom: 0.65rem;">
+        Response Risk
+      </div>
+      {% for axis, label in [
+           ("groundedness","Groundedness"), ("uncertainty","Uncertainty"),
+           ("bias","Bias"),                ("privacy","Privacy"),
+           ("injection","Injection"),      ("cost","Cost"),
+         ] %}
+      {% set val = t.risk.get(axis, 0) %}
+      {% set bar_color = "var(--warning)" if val >= 0.6 else ("var(--caution)" if val >= 0.3 else "var(--cleared)") %}
+      <div style="margin-bottom: 0.45rem;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+          <span style="font-size: 0.65rem; color: var(--muted);">{{ label }}</span>
+          <span class="mono" style="font-size: 0.65rem; color: {{ bar_color }};">{{ "%.2f"|format(val) }}</span>
+        </div>
+        <div style="height: 4px; background: var(--border); border-radius: 2px;">
+          <div style="height: 4px; width: {{ (val * 100)|int }}%; background: {{ bar_color }};
+                      border-radius: 2px; transition: width 0.3s;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Session Risk -->
+    <div style="padding: 0.85rem 1rem; border-right: 1px solid var(--border);">
+      <div class="disp" style="font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
+                                text-transform: uppercase; color: var(--muted); margin-bottom: 0.65rem;">
+        Session Risk
+      </div>
+      {% for axis, label in [
+           ("escalation_gradient","Escalation gradient"),
+           ("contamination","Contamination"),
+           ("retry_burn","Retry burn"),
+           ("cost_creep","Cost creep"),
+         ] %}
+      {% set val = t.session_risk.get(axis, 0) %}
+      {% set bar_color = "var(--warning)" if val >= 0.6 else ("var(--caution)" if val >= 0.3 else "var(--cleared)") %}
+      <div style="margin-bottom: 0.45rem;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+          <span style="font-size: 0.65rem; color: var(--muted);">{{ label }}</span>
+          <span class="mono" style="font-size: 0.65rem; color: {{ bar_color }};">{{ "%.2f"|format(val) }}</span>
+        </div>
+        <div style="height: 4px; background: var(--border); border-radius: 2px;">
+          <div style="height: 4px; width: {{ (val * 100)|int }}%; background: {{ bar_color }};
+                      border-radius: 2px;"></div>
+        </div>
+      </div>
+      {% endfor %}
+
+      <!-- Stage latency breakdown -->
+      {% if t.stage_latency_ms %}
+      <div style="margin-top: 0.9rem;">
+        <div class="disp" style="font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em;
+                                  text-transform: uppercase; color: var(--dimmer); margin-bottom: 0.4rem;">
+          Stage latency
+        </div>
+        {% for stage, ms in t.stage_latency_ms.items() %}
+        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+          <span style="font-size: 0.63rem; color: var(--dimmer);">{{ stage }}</span>
+          <span class="mono" style="font-size: 0.63rem; color: var(--muted);">{{ ms }}ms</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Findings -->
+    <div style="padding: 0.85rem 1rem;">
+      <div class="disp" style="font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
+                                text-transform: uppercase; color: var(--muted); margin-bottom: 0.65rem;">
+        Detector Findings
+      </div>
+      {% for f in t.findings %}
+      {% set f_color = "var(--warning)" if f.score >= 0.6 else ("var(--caution)" if f.score >= 0.3 else "var(--dimmer)") %}
+      {% set ran_flag = f.get("ran", True) %}
+      <div style="margin-bottom: 0.5rem; padding-bottom: 0.5rem;
+                  border-bottom: 1px solid var(--border);">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <span class="mono" style="font-size: 0.63rem; color: {% if not ran_flag %}var(--dimmer){% else %}#8891A0{% endif %};">
+            {{ f.detector }}{% if not ran_flag %} <span style="color: var(--dimmer);">skipped</span>{% endif %}
+          </span>
+          <span class="mono" style="font-size: 0.65rem; color: {{ f_color }}; font-weight: 500;">
+            {{ "%.2f"|format(f.score) }}
+          </span>
+        </div>
+        {% if f.detail %}
+        <div style="font-size: 0.62rem; color: var(--dimmer); margin-top: 1px;">{{ f.detail[:80] }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% if not t.findings %}
+      <span style="font-size: 0.68rem; color: var(--dimmer);">no findings</span>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- Triggered rules + degraded -->
+  {% if t.triggered_by or t.degraded %}
+  <div style="padding: 0.6rem 1rem; display: flex; gap: 2rem; flex-wrap: wrap;
+              background: {% if is_flagged %}rgba(210,69,47,0.06){% elif is_caution %}rgba(224,163,46,0.06){% else %}transparent{% endif %};">
+
+    {% if t.triggered_by %}
+    <div>
+      <span class="disp" style="font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
+                                  text-transform: uppercase; color: {{ ac }}; margin-right: 0.5rem;">
+        Triggered
+      </span>
+      {% for rule in t.triggered_by %}
+      <span class="mono" style="font-size: 0.65rem; color: {{ ac }}; margin-right: 0.75rem;">
+        {{ rule }}
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if t.degraded %}
+    <div>
+      <span class="disp" style="font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
+                                  text-transform: uppercase; color: var(--dimmer); margin-right: 0.5rem;">
+        Degraded
+      </span>
+      {% for d in t.degraded %}
+      <span class="mono" style="font-size: 0.65rem; color: var(--dimmer); margin-right: 0.75rem;">
+        {{ d }}
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div>
+  {% endif %}
+
+</div>
+{% endfor %}
+
+{% if not turns %}
+<div style="padding: 3rem 0; text-align: center; color: var(--dimmer); font-size: 0.82rem;
+            border: 1px dashed var(--border); border-radius: 4px;">
+  No decisions recorded for this session.
+</div>
+{% endif %}
+
+{% endblock %}

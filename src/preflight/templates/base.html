@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preflight{% block title %}{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10" defer></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --panel:        #16181D;
+      --panel-raised: #1F2229;
+      --border:       #2A2D35;
+      --strip:        #EDE8DE;
+      --ink:          #2A2C31;
+      --cleared:      #4FA88B;
+      --caution:      #E0A32E;
+      --warning:      #D2452F;
+      --muted:        #555C6B;
+      --dimmer:       #3A3F4B;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 14px; }
+    body {
+      background: var(--panel);
+      font-family: 'IBM Plex Sans', sans-serif;
+      color: #C8CDD8;
+      min-height: 100vh;
+    }
+    .disp  { font-family: 'IBM Plex Sans Condensed', sans-serif; }
+    .mono  { font-family: 'IBM Plex Mono', monospace; }
+    a { text-decoration: none; }
+    /* HTMX indicator */
+    .htmx-indicator { opacity: 0; transition: opacity 200ms; }
+    .htmx-request .htmx-indicator { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ────────────────────────────────────────────────── -->
+<nav style="background: var(--panel-raised); border-bottom: 1px solid var(--border);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: 0 1.5rem;
+              display: flex; align-items: center; height: 46px; gap: 1.5rem;">
+
+    <!-- Wordmark -->
+    <a href="/console/live" class="disp"
+       style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.18em;
+              text-transform: uppercase; color: #fff; white-space: nowrap;">
+      ✦ Preflight
+    </a>
+
+    <!-- Nav links -->
+    <div style="display: flex; gap: 2px;">
+      {% for label, href, view in [
+           ("Live",         "/console/live",       "live"),
+           ("Review Queue", "/console/queue",       "queue"),
+           ("Governance",   "/console/governance",  "governance"),
+         ] %}
+      <a href="{{ href }}" class="disp"
+         style="padding: 0.25rem 0.85rem; border-radius: 3px; font-size: 0.78rem;
+                font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+                {% if active_view == view %}
+                  background: rgba(255,255,255,0.08); color: #fff;
+                {% else %}
+                  color: var(--muted);
+                {% endif %}">
+        {{ label }}
+      </a>
+      {% endfor %}
+    </div>
+
+    <!-- Policy badge -->
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 1rem;">
+      <span class="mono"
+            style="font-size: 0.72rem; color: var(--dimmer);">
+        {{ policy_id }} · {{ jurisdiction }}
+      </span>
+      <span id="pulse"
+            style="width: 7px; height: 7px; border-radius: 50%;
+                   background: var(--cleared); display: inline-block;
+                   animation: blink 2s ease-in-out infinite;"
+            title="live"></span>
+    </div>
+  </div>
+</nav>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 1.5rem 1.5rem;">
+  {% block content %}{% endblock %}
+</main>
+
+<style>
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.25; }
+  }
+</style>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %} — Live{% endblock %}
+
+{% block content %}
+
+<!-- Section label -->
+<div style="display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1rem;">
+  <h1 class="disp" style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.14em;
+                           text-transform: uppercase; color: var(--muted);">
+    Live Oversight
+  </h1>
+  <span style="font-size: 0.68rem; color: var(--dimmer);">decisions refresh every 2 s</span>
+</div>
+
+<!-- Stats bar — HTMX polling -->
+<div id="stats-bar"
+     hx-get="/console/partials/stats"
+     hx-trigger="every 4s"
+     hx-swap="innerHTML"
+     style="margin-bottom: 1.5rem;">
+  {% include "partials/stats.html" %}
+</div>
+
+<!-- Strip rack label -->
+<div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.6rem;
+            border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;">
+  <span class="disp" style="font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em;
+                             text-transform: uppercase; color: var(--muted);">
+    Flight Progress Strips
+  </span>
+  <span style="font-size: 0.65rem; color: var(--dimmer);">
+    — one strip per session · hover markers for detail
+  </span>
+  <!-- colour legend -->
+  <div style="margin-left: auto; display: flex; gap: 0.75rem; align-items: center;">
+    {% for label, color in [("pass","var(--cleared)"),("caution","var(--caution)"),("flagged","var(--warning)")] %}
+    <span style="display: flex; align-items: center; gap: 4px; font-size: 0.65rem; color: var(--muted);">
+      <span style="width: 10px; height: 10px; background: {{ color }}; border-radius: 2px; display: inline-block;"></span>
+      {{ label }}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Strip rack — HTMX polling -->
+<div id="strips-rack"
+     hx-get="/console/partials/strips"
+     hx-trigger="every 2s"
+     hx-swap="innerHTML">
+  {% include "partials/strips.html" %}
+</div>
+
+{% endblock %}
