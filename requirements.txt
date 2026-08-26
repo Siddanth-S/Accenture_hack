@@ -1,0 +1,14 @@
+# Core — this is all you need to run the prototype
+pydantic>=2.6
+pyyaml>=6.0
+numpy>=1.26
+fastapi>=0.110
+uvicorn[standard]>=0.27
+jinja2>=3.1
+httpx>=0.27
+
+# Stage 2/3 detectors (optional — engine degrades explicitly without them)
+# onnxruntime>=1.17
+# transformers>=4.40
+# presidio-analyzer>=2.2
+# opentelemetry-sdk>=1.24

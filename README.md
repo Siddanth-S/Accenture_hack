@@ -1,0 +1,160 @@
+# Preflight — ControlPlane Checker
+
+**Accenture Innovation Challenge 2026 · Round 2 · Problem Track 1**
+Team Preflight — NITK Surathkal
+
+---
+
+## The thesis
+
+AI failure is not the problem. The delay in noticing it is.
+
+Enterprises discover AI failures through a weekly eval, a month-end cost
+review, or a customer complaint — days after a user already acted on the
+answer. Guardrail libraries filter one response at a time. Observability
+platforms draw graphs after the fact. Neither one decides, and neither
+carries session state.
+
+That last gap is the one that matters:
+
+> **A single response is not the unit of failure. A session is.**
+
+Retry loops, creeping cost, claim contamination and gradual jailbreak
+escalation do not exist inside any single response. A stateless checker
+cannot see them in principle — not merely in practice.
+
+Preflight is a model-agnostic sidecar that wraps the inference call rather
+than following it, scores every interaction on **performance, cost and
+responsibility**, and carries risk forward across the whole conversation.
+
+---
+
+## Results
+
+Run `python -m eval.run_scenarios` to reproduce:
+
+```
+                               stateless   session-aware
+  ------------------------------------------------------
+  unsafe caught                   4/6             6/6
+  detection rate                    67%           100%
+  false positives                 0/1             0/1
+
+  2 turn(s) intervened on ONLY because of session state
+```
+
+Scoring is **timely** detection — intervened at or before the turn the
+scenario becomes unsafe. A checker that fires on turn 9 of a breach that
+began on turn 4 has prevented nothing, so "caught somewhere in the session"
+would be the wrong metric.
+
+The stateless column is not a strawman. Every competing guardrail library is
+stateless by construction.
+
+---
+
+## Quickstart
+
+```bash
+pip install -r requirements.txt
+python -m eval.run_scenarios
+```
+
+No model downloads, no GPU, no API keys. Detectors degrade to documented
+lexical fallbacks and say so in the output.
+
+---
+
+## Architecture — the staged cascade
+
+| Stage | Budget | What runs | Blocking? |
+|---|---|---|---|
+| 0 · preflight | 1–5 ms | PII, injection, routing, budget | yes, pre-token |
+| 1 · streaming | ~0 ms | claim extraction, canary, output PII | during generation |
+| 2 · verification | 30–150 ms | NLI entailment per claim | gated by stakes |
+| 3 · deep | 300 ms–2 s | semantic entropy, counterfactual bias | tail only |
+
+**On the 80 ms figure from our Round 1 deck:** it was wrong, and we are
+correcting it rather than defending it. You cannot run NLI entailment on
+every claim plus a counterfactual probe in 80 ms — a counterfactual probe
+alone needs a second generation.
+
+The defensible claim is stage 1. Work done *while tokens are still
+streaming* costs no wall-clock time on the inference path, because the model
+is the bottleneck, not us. That is what "sidecar, not gatekeeper" actually
+buys. Roughly 70% of traffic terminates at stage 0–1; the expensive tail runs
+where the stakes justify it.
+
+---
+
+## What makes this different
+
+**Session risk accumulator** (`session.py`) — four trajectory signals that
+are invisible to any single-response checker:
+*escalation gradient* (monotone walk toward a policy boundary),
+*contamination* (turn 6 reasoning from an ungrounded claim asserted at turn 2),
+*retry burn*, *cost creep*.
+
+**Claim-level verdicts** (`claims.py`) — atomic claims with character offsets,
+so we can redact or regenerate one clause instead of blocking a whole answer.
+`UNVERIFIABLE` is a first-class verdict: the brief notes there is often no
+real-time ground truth, and a checker that forces every claim into
+supported/unsupported is manufacturing confidence it does not have.
+
+**Conformal risk control** (`calibration.py`) — thresholds are derived from an
+operator-chosen risk budget, not hand-tuned. The claim we can defend:
+*"the probability an unsafe response passes is bounded at 5%, with 95%
+confidence, distribution-free."* The knob a compliance officer turns is
+"what miss rate can we accept", not "what should the groundedness threshold be".
+
+**Cost as a gate, not an invoice** (`router.py`) — routing happens before a
+token exists. High-stakes traffic is never downgraded, and we never route
+*up*: silently spending more of someone's money is not a safety feature.
+
+**Blocking only on deterministic faults** (`policy.py`) — a matched PII
+pattern with a valid checksum, a fired canary, a validated injection
+signature. Probabilistic detectors never hard-block, because 0.82 is a reason
+to regenerate, not a reason to be certain. Blocking on a model's guess is how
+you train users to route around the guardrail.
+
+**Tamper-evident ledger** (`ledger.py`) — each record carries the SHA-256 of
+its predecessor. "We log decisions" becomes "we can prove our logs are
+intact", and `verify_chain()` names the exact sequence number of any break.
+
+---
+
+## Limitations
+
+Stated deliberately — a checker that hides its own failure modes is the thing
+we are arguing against.
+
+- Without an NLI model loaded, groundedness runs on lexical + numeric
+  overlap. Confidence is capped at 0.65 so a fallback verdict can never
+  present as model-grade evidence. Only *missing specific figures* produce an
+  `UNSUPPORTED` verdict; unmatched prose is `UNVERIFIABLE`.
+- Retry detection uses 4-character prefix stemming, which will occasionally
+  collide unrelated words. Embedding cosine is the production path.
+- The conformal guarantee assumes calibration and production data are
+  exchangeable. Under distribution shift it degrades — which is why drift
+  monitoring must feed recalibration.
+- Counterfactual bias probing requires a second generation. It is sampled,
+  not run per-request, and the cost is real.
+- `preflight-sessions-v1` is 7 hand-built sessions. Enough to demonstrate the
+  mechanism, not enough to make statistical claims from.
+
+## Repo map
+
+```
+src/preflight/
+  schemas.py       risk vector, claims, decisions
+  session.py       the session risk accumulator
+  claims.py        extraction + groundedness verification
+  detectors/core.py PII, injection, entropy, bias, capability negotiation
+  policy.py        declarative YAML -> action ladder
+  calibration.py   conformal risk control
+  router.py        cost-aware routing + waste ledger
+  engine.py        the staged cascade
+policies/          per-jurisdiction policy, hot-swappable
+data/sessions/     preflight-sessions-v1 adversarial multi-turn set
+eval/              scenario runner
+```

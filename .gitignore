@@ -1,0 +1,28 @@
+# secrets — never commit
+.env
+*.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Data / ledger (generated at runtime)
+data/preflight.db
+data/*.db
+
+# IDE / tooling
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.claude/
