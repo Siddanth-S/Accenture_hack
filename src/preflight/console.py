@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Form
 from fastapi.requests import Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -149,6 +149,57 @@ async def session_detail(request: Request, session_id: str):
         "has_prompts":   any(t["prompt"] for t in turns),
         **_ctx("live", {}),
     })
+
+
+@router.get("/console/review-form/{seq}", response_class=HTMLResponse)
+async def review_form(request: Request, seq: int):
+    html = f"""
+<form hx-post="/console/review/{seq}"
+      hx-target="#review-{seq}"
+      hx-swap="outerHTML"
+      style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
+  <select name="to_action"
+          style="background:var(--panel); border:1px solid var(--border); color:#C8CDD8;
+                 font-size:0.7rem; padding:0.25rem 0.4rem; border-radius:3px;">
+    <option value="pass">pass — approve</option>
+    <option value="escalate">escalate — keep</option>
+    <option value="block">block — harden</option>
+  </select>
+  <input name="rationale" placeholder="rationale (required)" required
+         style="flex:1; min-width:160px; background:var(--panel); border:1px solid var(--border);
+                color:#C8CDD8; font-size:0.7rem; padding:0.25rem 0.5rem; border-radius:3px;"/>
+  <input name="reviewer" placeholder="reviewer id"
+         style="width:130px; background:var(--panel); border:1px solid var(--border);
+                color:#C8CDD8; font-size:0.7rem; padding:0.25rem 0.5rem; border-radius:3px;"/>
+  <button type="submit"
+          style="background:var(--cleared); color:#0D1210; font-size:0.68rem; font-weight:700;
+                 border:none; padding:0.28rem 0.7rem; border-radius:3px; cursor:pointer;
+                 font-family:inherit; letter-spacing:0.04em;">
+    Submit
+  </button>
+</form>"""
+    return HTMLResponse(html)
+
+
+@router.post("/console/review/{seq}", response_class=HTMLResponse)
+async def submit_review(
+    request: Request,
+    seq: int,
+    to_action: str = Form(...),
+    rationale: str = Form(...),
+    reviewer: str = Form(default="reviewer"),
+):
+    row = _ledger._conn.execute(
+        "SELECT action FROM ledger WHERE seq=?", (seq,)
+    ).fetchone()
+    from_action = row["action"] if row else "unknown"
+    _ledger.record_override(seq, reviewer or "reviewer", from_action, to_action, rationale)
+    color = "var(--cleared)" if to_action == "pass" else "var(--caution)"
+    html = (
+        f'<span style="font-size:0.68rem; color:{color}; font-weight:600;">'
+        f'✓ {to_action} · {reviewer or "reviewer"}</span>'
+    )
+    return HTMLResponse(html)
 
 
 @router.get("/console/governance", response_class=HTMLResponse)

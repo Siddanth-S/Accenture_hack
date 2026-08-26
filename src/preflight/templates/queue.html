@@ -28,7 +28,7 @@
   <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem;">
     <thead>
       <tr style="border-bottom: 1px solid var(--border);">
-        {% for col in ["Harm", "Session", "Turn", "Use case", "Action", "Reason", "Latency"] %}
+        {% for col in ["Harm", "Session", "Turn", "Use case", "Action", "Reason", "Latency", "Review"] %}
         <th style="padding: 0.6rem 0.9rem; text-align: left; font-size: 0.65rem;
                    font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
                    color: var(--muted);" class="disp">
@@ -45,7 +45,7 @@
         "redact":   "var(--caution)",
         "regenerate":"var(--caution)",
       }.get(item.action, "var(--muted)") %}
-      <tr style="border-bottom: 1px solid var(--border);
+      <tr style="border-bottom: 1px solid var(--border); vertical-align: top;
                  {% if loop.last %}border-bottom: none;{% endif %}">
         <!-- Expected harm -->
         <td style="padding: 0.65rem 0.9rem;">
@@ -55,9 +55,13 @@
         </td>
         <!-- Session ID -->
         <td style="padding: 0.65rem 0.9rem;">
-          <span class="mono" style="font-size: 0.7rem; color: #8891A0;">
+          <a href="/console/session/{{ item.session_id }}"
+             style="font-size: 0.7rem; color: #8891A0; font-family: 'IBM Plex Mono', monospace;
+                    text-decoration: none;"
+             onmouseover="this.style.color='var(--cleared)'"
+             onmouseout="this.style.color='#8891A0'">
             {{ item.session_id[:16] }}
-          </span>
+          </a>
         </td>
         <!-- Turn -->
         <td style="padding: 0.65rem 0.9rem;">
@@ -79,9 +83,9 @@
           </span>
         </td>
         <!-- Reason -->
-        <td style="padding: 0.65rem 0.9rem; max-width: 380px;">
+        <td style="padding: 0.65rem 0.9rem; max-width: 320px;">
           <span style="font-size: 0.72rem; color: #8891A0; line-height: 1.4;">
-            {{ item.reason[:120] }}{% if item.reason | length > 120 %}…{% endif %}
+            {{ item.reason[:100] }}{% if item.reason | length > 100 %}…{% endif %}
           </span>
         </td>
         <!-- Latency -->
@@ -90,11 +94,32 @@
             {{ item.latency_ms | round(1) }}ms
           </span>
         </td>
+        <!-- Review cell -->
+        <td style="padding: 0.65rem 0.9rem; min-width: 90px;">
+          <div id="review-{{ item.seq }}">
+            <span style="font-size: 0.68rem; color: var(--caution); cursor: pointer;
+                         font-weight: 600; letter-spacing: 0.04em;"
+                  hx-get="/console/review-form/{{ item.seq }}"
+                  hx-target="#review-{{ item.seq }}"
+                  hx-swap="innerHTML"
+                  title="Open review form">
+              review →
+            </span>
+          </div>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+
+<!-- Override audit note -->
+<p style="margin-top: 0.75rem; font-size: 0.68rem; color: var(--dimmer); line-height: 1.5;">
+  Every override is recorded in the ledger as a labelled training signal —
+  it is not just permitted, it is captured.
+  Reviewers who approve a flagged response are providing a free ground-truth label
+  that can retune the calibration threshold.
+</p>
 {% endif %}
 
 {% endblock %}

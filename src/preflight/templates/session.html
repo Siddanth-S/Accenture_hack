@@ -47,6 +47,18 @@
   {% endif %}
 </div>
 
+<!-- Session risk timeline (only when there are 2+ turns) -->
+{% if turns | length > 1 %}
+<div style="background: var(--panel-raised); border: 1px solid var(--border);
+            border-radius: 4px; padding: 0.85rem 1rem; margin-bottom: 1.25rem;">
+  <div class="disp" style="font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
+                            text-transform: uppercase; color: var(--muted); margin-bottom: 0.6rem;">
+    Session Risk Trajectory
+  </div>
+  <div id="session-risk-chart" style="height: 140px; width: 100%;"></div>
+</div>
+{% endif %}
+
 <!-- Turn cards -->
 {% for t in turns %}
 {% set ac = ACTION_COLOR.get(t.action, "var(--muted)") %}
@@ -280,4 +292,81 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+{% if turns | length > 1 %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script>
+(function () {
+  var turnLabels = {{ turns | map(attribute='turn') | list | tojson }};
+  var signals = [
+    { name: 'Escalation gradient', color: '#D2452F', key: 'escalation_gradient' },
+    { name: 'Contamination',       color: '#E0A32E', key: 'contamination' },
+    { name: 'Retry burn',          color: '#6C8EBF', key: 'retry_burn' },
+    { name: 'Cost creep',          color: '#4FA88B', key: 'cost_creep' },
+  ];
+  var rawData = {{ turns | map(attribute='session_risk') | list | tojson }};
+
+  var series = signals.map(function(sig) {
+    return {
+      name: sig.name,
+      type: 'line',
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 5,
+      lineStyle: { color: sig.color, width: 1.5 },
+      itemStyle: { color: sig.color },
+      data: rawData.map(function(sr) { return sr[sig.key] || 0; }),
+    };
+  });
+
+  var chart = echarts.init(document.getElementById('session-risk-chart'), null,
+                           { renderer: 'svg' });
+  chart.setOption({
+    backgroundColor: 'transparent',
+    animation: false,
+    grid: { top: 16, bottom: 28, left: 8, right: 8, containLabel: true },
+    legend: {
+      data: signals.map(function(s){ return s.name; }),
+      textStyle: { color: '#555C6B', fontSize: 10 },
+      itemHeight: 8, itemWidth: 14,
+      top: 0, right: 0,
+    },
+    xAxis: {
+      type: 'category',
+      data: turnLabels.map(function(n){ return 'T' + n; }),
+      axisLine: { lineStyle: { color: '#2A2D35' } },
+      axisLabel: { color: '#555C6B', fontSize: 10 },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value', min: 0, max: 1,
+      splitNumber: 4,
+      axisLabel: { color: '#555C6B', fontSize: 9,
+                   formatter: function(v){ return v.toFixed(1); } },
+      splitLine: { lineStyle: { color: '#2A2D35', type: 'dashed' } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1F2229',
+      borderColor: '#2A2D35',
+      textStyle: { color: '#C8CDD8', fontSize: 11 },
+      formatter: function(params) {
+        var s = '<b>' + params[0].axisValue + '</b><br/>';
+        params.forEach(function(p) {
+          s += '<span style="color:' + p.color + '">&#9679;</span> '
+            + p.seriesName + ': <b>' + p.value.toFixed(2) + '</b><br/>';
+        });
+        return s;
+      },
+    },
+    series: series,
+  });
+  window.addEventListener('resize', function(){ chart.resize(); });
+})();
+</script>
+{% endif %}
 {% endblock %}
