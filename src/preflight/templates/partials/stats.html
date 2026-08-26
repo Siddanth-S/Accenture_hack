@@ -1,24 +1,28 @@
 {% set actions = stats.get("actions", {}) %}
-{% set flagged = actions.get("escalate", 0) + actions.get("block", 0) %}
-{% set flagged_color = "var(--warning)" if flagged > 0 else "var(--muted)" %}
 
-<div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-  {% for label, value, color in [
-       ("Decisions",   stats.records,                      "var(--muted)"),
-       ("Passed",      actions.get("pass", 0),              "var(--cleared)"),
-       ("Redacted",    actions.get("redact", 0),            "var(--caution)"),
-       ("Regenerated", actions.get("regenerate", 0),        "var(--caution)"),
-       ("Escalated",   actions.get("escalate", 0),          "var(--warning)"),
-       ("Blocked",     actions.get("block", 0),             "var(--warning)"),
-       ("Avg latency", stats.avg_latency_ms | round(1)|string ~ "ms", "var(--muted)"),
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.6rem;">
+  {% for label, value, color, dim_color in [
+       ("Decisions",   stats.records,                       "var(--text)",   "var(--text-2)"),
+       ("Passed",      actions.get("pass", 0),               "var(--green)",  "var(--green)"),
+       ("Redacted",    actions.get("redact", 0),             "var(--amber)",  "var(--amber)"),
+       ("Regenerated", actions.get("regenerate", 0),         "var(--amber)",  "var(--amber)"),
+       ("Escalated",   actions.get("escalate", 0),           "var(--red)",    "var(--red)"),
+       ("Blocked",     actions.get("block", 0),              "var(--red)",    "var(--red)"),
+       ("Avg latency", stats.avg_latency_ms|round(1)|string~"ms", "var(--blue)", "var(--blue)"),
      ] %}
-  <div style="background: var(--panel-raised); border: 1px solid var(--border);
-              border-radius: 4px; padding: 0.65rem 1rem; min-width: 100px;">
-    <div class="mono" style="font-size: 1.25rem; font-weight: 500; color: {{ color }}; line-height: 1;">
+  <div style="
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 0.9rem;
+    transition: border-color 140ms;
+  " onmouseover="this.style.borderColor='var(--border-2)'"
+     onmouseout="this.style.borderColor='var(--border)'">
+    <div class="mono" style="font-size: 1.35rem; font-weight: 500; color: {{ color }}; line-height: 1.1;">
       {{ value }}
     </div>
-    <div style="font-size: 0.68rem; color: var(--muted); letter-spacing: 0.06em;
-                text-transform: uppercase; margin-top: 3px;">
+    <div class="disp" style="font-size: 0.62rem; color: var(--text-3); letter-spacing: 0.08em;
+                text-transform: uppercase; margin-top: 0.3rem;">
       {{ label }}
     </div>
   </div>

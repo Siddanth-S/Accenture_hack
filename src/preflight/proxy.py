@@ -172,7 +172,7 @@ async def chat_completions(request: Request):
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
-                    f"{UPSTREAM_BASE_URL}/v1/chat/completions",
+                    f"{UPSTREAM_BASE_URL}/chat/completions",
                     json=upstream_body,
                     headers={"Authorization": f"Bearer {UPSTREAM_API_KEY}",
                              "Content-Type": "application/json"},
@@ -282,6 +282,117 @@ async def replay_one(scenario_slug: str):
 # ---------------------------------------------------------------------------
 # Observability
 # ---------------------------------------------------------------------------
+
+@app.post("/api/chat")
+async def api_chat(request: Request):
+    """Rich JSON endpoint for the interactive chat UI.
+
+    Returns the model response plus the full Preflight analysis so the
+    browser can render the pipeline breakdown, risk bars, and routing
+    decision without a second round-trip.
+    """
+    body      = await request.json()
+    prompt    = body.get("prompt", "").strip()
+    session_id = body.get("session_id", "chat-default")
+    turn      = int(body.get("turn", 1))
+    model     = body.get("model", "claude-sonnet-5")
+    messages  = body.get("messages", [{"role": "user", "content": prompt}])
+
+    if not prompt:
+        return JSONResponse({"error": "prompt is required"}, status_code=400)
+
+    ctx = RequestContext(
+        session_id=session_id, use_case="default", turn=turn,
+        requested_model=model, sources=[],
+    )
+
+    pre_findings, pre_faults, rd = _engine.preflight(ctx, prompt)
+    ctx.routed_model = rd.routed
+
+    if pre_faults:
+        return JSONResponse({
+            "blocked": True, "stage": 0, "faults": pre_faults,
+            "action": "block",
+            "reason": f"Blocked at preflight: {', '.join(pre_faults)}",
+            "risk": {}, "session_risk": {}, "stage_latency_ms": {},
+            "findings": [], "triggered_by": [],
+            "requested_model": rd.requested, "routed_model": rd.routed,
+            "cost_saved_usd": 0, "cost_usd": 0, "latency_ms": 0,
+            "session_id": session_id,
+        })
+
+    tokens_in = max(1, len(prompt.split()) * 4 // 3)
+    response_text = ""
+
+    if not UPSTREAM_API_KEY:
+        response_text = (
+            "Preflight is running in demo mode — no UPSTREAM_API_KEY is set. "
+            "The detection pipeline still ran fully on your prompt. "
+            "Add your OpenRouter key to .env to get real model responses."
+        )
+        tokens_out = max(1, len(response_text.split()) * 4 // 3)
+    else:
+        upstream_model = _upstream_model(rd.routed)
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    f"{UPSTREAM_BASE_URL}/chat/completions",
+                    json={"model": upstream_model, "messages": messages, "stream": False},
+                    headers={"Authorization": f"Bearer {UPSTREAM_API_KEY}",
+                             "Content-Type": "application/json"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                response_text = data["choices"][0]["message"]["content"]
+                usage = data.get("usage", {})
+                tokens_in  = usage.get("prompt_tokens", tokens_in)
+                tokens_out = usage.get("completion_tokens",
+                                       max(1, len(response_text.split()) * 4 // 3))
+        except Exception as exc:
+            response_text = f"Upstream error: {exc}"
+            tokens_out = 10
+
+    result   = InferenceResult(text=response_text, tokens_in=tokens_in, tokens_out=tokens_out)
+    decision = await _engine.evaluate_response(ctx, prompt, result)
+    _ledger.append(decision, _policy.version_hash)
+    state.record_turn(session_id, turn, prompt, response_text,
+                      rd.requested, rd.routed, rd.saved_usd)
+
+    findings_out = []
+    for f in decision.findings:
+        fd = f.model_dump() if hasattr(f, "model_dump") else {}
+        findings_out.append({
+            "detector": fd.get("detector", ""),
+            "score":    fd.get("score", 0),
+            "detail":   fd.get("detail", ""),
+            "ran":      fd.get("ran", True),
+        })
+
+    final_response = response_text
+    if decision.action == Action.BLOCK:
+        final_response = "[Response blocked by Preflight]"
+    elif decision.action == Action.REDACT and decision.response_preview:
+        final_response = decision.response_preview
+
+    return JSONResponse({
+        "blocked":        False,
+        "response":       final_response,
+        "action":         decision.action.value,
+        "reason":         decision.reason,
+        "risk":           decision.risk.as_dict(),
+        "session_risk":   decision.session_risk.as_dict(),
+        "stage_latency_ms": decision.stage_latency_ms or {},
+        "findings":       findings_out,
+        "requested_model": rd.requested,
+        "routed_model":   rd.routed,
+        "cost_saved_usd": rd.saved_usd,
+        "cost_usd":       decision.cost_usd,
+        "latency_ms":     round(decision.latency_ms, 2),
+        "triggered_by":   decision.triggered_by or [],
+        "session_id":     session_id,
+        "demo_mode":      not bool(UPSTREAM_API_KEY),
+    })
+
 
 @app.get("/health")
 async def health():

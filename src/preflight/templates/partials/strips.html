@@ -1,73 +1,88 @@
 {% set ACTION_COLOR = {
-  "pass":               "var(--cleared)",
-  "pass_with_citations":"var(--cleared)",
-  "redact":             "var(--caution)",
-  "regenerate":         "var(--caution)",
-  "escalate":           "var(--warning)",
-  "block":              "var(--warning)",
+  "pass":               "var(--green)",
+  "pass_with_citations":"var(--green)",
+  "redact":             "var(--amber)",
+  "regenerate":         "var(--amber)",
+  "escalate":           "var(--red)",
+  "block":              "var(--red)",
+} %}
+
+{% set BORDER_COLOR = {
+  0: "var(--green)",
+  1: "var(--amber)",
+  2: "var(--red)",
 } %}
 
 {% if not sessions %}
-<div style="padding: 3rem 0; text-align: center; color: var(--dimmer);
-            font-size: 0.82rem; border: 1px dashed var(--border); border-radius: 4px;">
-  No sessions recorded yet.<br>
-  <span style="color: var(--muted); margin-top: 0.5rem; display: block;">
-    Send a request to <span class="mono">POST /v1/chat/completions</span> to see strips appear.
+<div style="padding: 3rem 0; text-align: center; color: var(--text-3); font-size: 0.78rem;
+            border: 1px dashed var(--border); border-radius: 6px;">
+  No sessions yet.<br>
+  <span style="color: var(--text-2); margin-top: 0.4rem; display: block; font-size:0.72rem;">
+    Send a request to <span class="mono" style="font-size:0.7rem;">POST /v1/chat/completions</span>
+    or use the <a href="/console/chat" style="color:var(--blue);">Chat</a> page.
   </span>
 </div>
 {% endif %}
 
 {% for sess in sessions %}
 <a href="/console/session/{{ sess.session_id }}"
-   style="text-decoration: none; display: block;">
-<div style="
-  background: var(--strip);
-  border-left: 5px solid {{ sess.strip_border }};
-  border-radius: 0 3px 3px 0;
-  padding: 0.55rem 0.9rem;
-  margin-bottom: 5px;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  min-height: 46px;
-  cursor: pointer;
-  transition: filter 80ms;
-" onmouseover="this.style.filter='brightness(0.95)'" onmouseout="this.style.filter=''">
-  <!-- Session ID + use case -->
-  <div style="min-width: 180px; flex-shrink: 0;">
-    <div class="mono" style="font-size: 0.72rem; color: var(--ink); font-weight: 500; letter-spacing: 0.03em;">
-      {{ sess.session_id[:20] }}
-    </div>
-    <div style="font-size: 0.62rem; color: #7A7A6A; text-transform: uppercase;
-                letter-spacing: 0.08em; margin-top: 2px;">
-      {{ sess.use_case }}
-    </div>
-  </div>
+   style="display: block; text-decoration: none; margin-bottom: 4px;">
+  <div style="
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-left: 3px solid {{ sess.strip_border }};
+    border-radius: 0 6px 6px 0;
+    padding: 0.6rem 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-height: 48px;
+    transition: background 120ms, border-color 120ms;
+  "
+  onmouseover="this.style.background='var(--hover)'; this.style.borderColor='var(--border-2)'; this.style.borderLeftColor='{{ sess.strip_border }}';"
+  onmouseout="this.style.background='var(--raised)'; this.style.borderColor='var(--border)'; this.style.borderLeftColor='{{ sess.strip_border }}';">
 
-  <!-- Turn markers -->
-  <div style="display: flex; gap: 3px; align-items: center; flex: 1; flex-wrap: wrap;">
-    {% for t in sess.turns %}
-    {% set col = ACTION_COLOR.get(t.action, "#888") %}
-    <div title="T{{ t.turn }} · {{ t.action }} · {{ t.latency_ms }}ms&#10;{{ t.reason[:100] }}"
-         style="width: 24px; height: 24px; background: {{ col }}; border-radius: 2px;
-                display: flex; align-items: center; justify-content: center;
-                flex-shrink: 0; cursor: default;">
-      <span class="mono" style="font-size: 0.6rem; color: rgba(0,0,0,0.55); font-weight: 600;">
-        {{ t.turn }}
-      </span>
+    <!-- Session ID + use case -->
+    <div style="min-width: 170px; flex-shrink: 0;">
+      <div class="mono" style="font-size: 0.71rem; color: var(--text); font-weight: 500;">
+        {{ sess.session_id[:22] }}
+      </div>
+      <div class="disp" style="font-size: 0.6rem; color: var(--text-3); text-transform: uppercase;
+                  letter-spacing: 0.08em; margin-top: 2px;">
+        {{ sess.use_case }}
+      </div>
     </div>
-    {% endfor %}
-  </div>
 
-  <!-- Right: turn count + last latency + click hint -->
-  <div class="mono" style="font-size: 0.68rem; color: #8A8070; text-align: right;
-                            flex-shrink: 0; min-width: 90px;">
-    {{ sess.turns | length }} turn{% if sess.turns | length != 1 %}s{% endif %}
-    <br>
-    <span style="color: #AAA090;">{{ sess.turns[-1].latency_ms }}ms</span>
-    <br>
-    <span style="font-size: 0.6rem; color: #7A7A6A; letter-spacing: 0.04em;">view →</span>
+    <!-- Turn dots -->
+    <div style="display: flex; gap: 4px; align-items: center; flex: 1; flex-wrap: wrap;">
+      {% for t in sess.turns %}
+      {% set col = ACTION_COLOR.get(t.action, "var(--text-3)") %}
+      <div title="T{{ t.turn }} · {{ t.action }} · {{ t.latency_ms }}ms&#10;{{ t.reason[:80] }}"
+           style="width: 22px; height: 22px; background: {{ col }}; border-radius: 3px;
+                  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+                  opacity: 0.9; cursor: default;">
+        <span class="mono" style="font-size: 0.58rem; color: rgba(0,0,0,0.6); font-weight: 600;">
+          {{ t.turn }}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Right: meta -->
+    <div style="flex-shrink: 0; text-align: right; min-width: 80px;">
+      <div class="mono" style="font-size: 0.65rem; color: var(--text-2);">
+        {{ sess.turns | length }} turn{% if sess.turns | length != 1 %}s{% endif %}
+      </div>
+      <div class="mono" style="font-size: 0.6rem; color: var(--text-3);">
+        {{ sess.turns[-1].latency_ms }}ms
+      </div>
+    </div>
+
+    <!-- Chevron -->
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0; opacity:0.3;">
+      <path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+
   </div>
-</div>
 </a>
 {% endfor %}

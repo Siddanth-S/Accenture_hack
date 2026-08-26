@@ -5,50 +5,127 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Preflight{% block title %}{% endblock %}</title>
   <script src="https://unpkg.com/htmx.org@1.9.10" defer></script>
-  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --panel:        #16181D;
-      --panel-raised: #1F2229;
-      --border:       #2A2D35;
+      /* Surface layers */
+      --bg:        #0B0E16;
+      --surface:   #10141E;
+      --raised:    #171C28;
+      --hover:     #1C2232;
+      --active:    #222840;
+
+      /* Borders */
+      --border:    #232942;
+      --border-2:  #2E3754;
+
+      /* Text */
+      --text:      #D6DCEE;
+      --text-2:    #6E7A96;
+      --text-3:    #333A52;
+
+      /* Semantic colors */
+      --green:     #39B87A;
+      --amber:     #C99530;
+      --red:       #C33B38;
+      --blue:      #4D7FD4;
+      --blue-dim:  #1E3060;
+
+      /* Legacy aliases — keep existing templates working */
+      --panel:        var(--surface);
+      --panel-raised: var(--raised);
       --strip:        #EDE8DE;
       --ink:          #2A2C31;
-      --cleared:      #4FA88B;
-      --caution:      #E0A32E;
-      --warning:      #D2452F;
-      --muted:        #555C6B;
-      --dimmer:       #3A3F4B;
+      --cleared:      var(--green);
+      --caution:      var(--amber);
+      --warning:      var(--red);
+      --muted:        var(--text-2);
+      --dimmer:       var(--text-3);
     }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html { font-size: 14px; }
+    html { font-size: 14px; -webkit-font-smoothing: antialiased; }
     body {
-      background: var(--panel);
+      background: var(--bg);
       font-family: 'IBM Plex Sans', sans-serif;
-      color: #C8CDD8;
+      color: var(--text);
       min-height: 100vh;
+      line-height: 1.5;
     }
-    .disp  { font-family: 'IBM Plex Sans Condensed', sans-serif; }
-    .mono  { font-family: 'IBM Plex Mono', monospace; }
-    a { text-decoration: none; }
+    .disp { font-family: 'IBM Plex Sans Condensed', sans-serif; }
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+    a { text-decoration: none; color: inherit; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+
     /* HTMX indicator */
     .htmx-indicator { opacity: 0; transition: opacity 200ms; }
     .htmx-request .htmx-indicator { opacity: 1; }
+
+    /* Animations */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.2; }
+    }
+    .fade-up { animation: fadeUp 0.25s ease forwards; }
+
+    /* Utility */
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 0.18rem 0.55rem; border-radius: 4px;
+      font-size: 0.68rem; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      font-family: 'IBM Plex Sans Condensed', sans-serif;
+    }
+    .badge-green  { background: rgba(57,184,122,0.12); color: var(--green); }
+    .badge-amber  { background: rgba(201,149,48,0.12); color: var(--amber); }
+    .badge-red    { background: rgba(195,59,56,0.12);  color: var(--red); }
+    .badge-blue   { background: rgba(77,127,212,0.12); color: var(--blue); }
+    .badge-muted  { background: var(--raised); color: var(--text-2); }
+
+    /* Risk bar component */
+    .risk-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
+    .risk-label { font-size: 0.65rem; color: var(--text-2); min-width: 88px; }
+    .risk-track { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .risk-fill  { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+    .risk-value { font-size: 0.63rem; color: var(--text-2); font-family: 'IBM Plex Mono', monospace;
+                  min-width: 28px; text-align: right; }
+
+    /* Section header */
+    .section-label {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--text-3);
+      font-family: 'IBM Plex Sans Condensed', sans-serif;
+      margin-bottom: 0.6rem;
+    }
   </style>
+  {% block head %}{% endblock %}
 </head>
 <body>
 
-<!-- ── Navigation ────────────────────────────────────────────────── -->
-<nav style="background: var(--panel-raised); border-bottom: 1px solid var(--border);">
-  <div style="max-width: 1280px; margin: 0 auto; padding: 0 1.5rem;
-              display: flex; align-items: center; height: 46px; gap: 1.5rem;">
+<!-- Navigation -->
+<nav style="height: 50px; background: var(--surface); border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; z-index: 50;">
+  <div style="max-width: 1440px; margin: 0 auto; padding: 0 1.5rem;
+              display: flex; align-items: center; height: 100%;">
 
     <!-- Wordmark -->
-    <a href="/console/live" class="disp"
-       style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.18em;
-              text-transform: uppercase; color: #fff; white-space: nowrap;">
-      ✦ Preflight
+    <a href="/console/live" style="display: flex; align-items: center; gap: 0.45rem;
+                                    margin-right: 2rem; flex-shrink: 0;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M8 1L10.5 6H14.5L11 9.5L12.5 14.5L8 11.5L3.5 14.5L5 9.5L1.5 6H5.5L8 1Z"
+              fill="var(--blue)" opacity="0.9"/>
+      </svg>
+      <span class="disp" style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.14em;
+                                 text-transform: uppercase; color: var(--text);">Preflight</span>
     </a>
 
     <!-- Nav links -->
@@ -57,45 +134,38 @@
            ("Live",         "/console/live",       "live"),
            ("Review Queue", "/console/queue",       "queue"),
            ("Governance",   "/console/governance",  "governance"),
+           ("Chat",         "/console/chat",        "chat"),
          ] %}
-      <a href="{{ href }}" class="disp"
-         style="padding: 0.25rem 0.85rem; border-radius: 3px; font-size: 0.78rem;
-                font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-                {% if active_view == view %}
-                  background: rgba(255,255,255,0.08); color: #fff;
-                {% else %}
-                  color: var(--muted);
-                {% endif %}">
-        {{ label }}
-      </a>
+      <a href="{{ href }}" class="disp" style="
+        padding: 0.28rem 0.85rem; border-radius: 5px;
+        font-size: 0.73rem; font-weight: 600; letter-spacing: 0.04em;
+        text-transform: uppercase; transition: all 140ms;
+        {% if active_view == view %}
+          background: var(--active); color: var(--text);
+        {% else %}
+          color: var(--text-2);
+        {% endif %}
+      ">{{ label }}</a>
       {% endfor %}
     </div>
 
-    <!-- Policy badge -->
+    <!-- Right: policy + status -->
     <div style="margin-left: auto; display: flex; align-items: center; gap: 1rem;">
-      <span class="mono"
-            style="font-size: 0.72rem; color: var(--dimmer);">
+      <span class="mono" style="font-size: 0.67rem; color: var(--text-3);">
         {{ policy_id }} · {{ jurisdiction }}
       </span>
-      <span id="pulse"
-            style="width: 7px; height: 7px; border-radius: 50%;
-                   background: var(--cleared); display: inline-block;
-                   animation: blink 2s ease-in-out infinite;"
-            title="live"></span>
+      <span title="live" style="
+        width: 7px; height: 7px; border-radius: 50%;
+        background: var(--green); display: inline-block;
+        animation: blink 2.5s ease-in-out infinite;">
+      </span>
     </div>
   </div>
 </nav>
 
-<main style="max-width: 1280px; margin: 0 auto; padding: 1.5rem 1.5rem;">
+<main style="max-width: 1440px; margin: 0 auto; padding: 1.75rem 1.5rem;">
   {% block content %}{% endblock %}
 </main>
-
-<style>
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.25; }
-  }
-</style>
 
 {% block scripts %}{% endblock %}
 </body>

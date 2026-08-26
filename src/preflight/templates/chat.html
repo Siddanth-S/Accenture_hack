@@ -1,0 +1,705 @@
+{% extends "base.html" %}
+{% block title %} — Chat{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Layout ────────────────────────────────────────────────── */
+  #chat-layout {
+    margin: -1.75rem -1.5rem;
+    height: calc(100vh - 50px);
+    display: grid;
+    grid-template-columns: 1fr 420px;
+  }
+
+  @media (max-width: 900px) {
+    #chat-layout { grid-template-columns: 1fr; }
+    #analysis-col { display: none; }
+  }
+
+  /* ── Chat column ───────────────────────────────────────────── */
+  #chat-col {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  #chat-header {
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* Message bubbles */
+  .msg { display: flex; flex-direction: column; max-width: 85%; animation: fadeUp 0.2s ease; }
+  .msg-user { align-self: flex-end; align-items: flex-end; }
+  .msg-assistant { align-self: flex-start; align-items: flex-start; }
+
+  .msg-bubble {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg-user .msg-bubble {
+    background: var(--blue-dim);
+    border: 1px solid rgba(77,127,212,0.3);
+    color: var(--text);
+    border-bottom-right-radius: 2px;
+  }
+  .msg-assistant .msg-bubble {
+    background: var(--raised);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-bottom-left-radius: 2px;
+  }
+  .msg-meta {
+    font-size: 0.6rem;
+    color: var(--text-3);
+    margin-top: 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* Loading dots */
+  .typing-dot {
+    display: inline-block;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--text-2);
+    animation: typingBounce 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* ── Input bar ─────────────────────────────────────────────── */
+  #input-bar {
+    border-top: 1px solid var(--border);
+    padding: 0.9rem 1.25rem;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+
+  #input-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-end;
+  }
+
+  #msg-input {
+    flex: 1;
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.82rem;
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: var(--text);
+    resize: none;
+    min-height: 42px;
+    max-height: 160px;
+    overflow-y: auto;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color 150ms;
+  }
+  #msg-input:focus { border-color: var(--border-2); }
+  #msg-input::placeholder { color: var(--text-3); }
+
+  #send-btn {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    width: 42px; height: 42px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: opacity 150ms;
+  }
+  #send-btn:hover { opacity: 0.85; }
+  #send-btn:disabled { opacity: 0.35; cursor: default; }
+
+  #model-select {
+    background: var(--raised);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 0.68rem;
+    font-family: 'IBM Plex Mono', monospace;
+    padding: 0.28rem 0.5rem;
+    border-radius: 5px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  /* ── Analysis column ───────────────────────────────────────── */
+  #analysis-col {
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #analysis-header {
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  #analysis-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem;
+  }
+
+  /* Pipeline steps */
+  .pipeline-steps {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .pipe-step {
+    display: flex; flex-direction: column; align-items: center;
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.55rem;
+    min-width: 54px;
+  }
+  .pipe-step.active { border-color: var(--green); }
+  .pipe-step.skipped { opacity: 0.45; }
+  .pipe-arrow { color: var(--text-3); font-size: 0.75rem; }
+
+  /* Decision banner */
+  .decision-banner {
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid;
+  }
+
+  /* Analysis section */
+  .a-section {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .a-section:last-child { border-bottom: none; margin-bottom: 0; }
+
+  /* Finder row */
+  .finder-row {
+    display: flex; align-items: baseline; gap: 0.5rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.68rem;
+  }
+  .finder-row:last-child { border-bottom: none; }
+  .finder-name { color: var(--text-2); font-family: 'IBM Plex Mono', monospace; flex: 1; }
+  .finder-score { font-family: 'IBM Plex Mono', monospace; font-weight: 600; min-width: 28px; text-align: right; }
+  .finder-detail { font-size: 0.6rem; color: var(--text-3); }
+
+  /* Empty state */
+  #empty-state {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: var(--text-3);
+    text-align: center;
+    padding: 2rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="chat-layout">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       Left: Chat
+       ════════════════════════════════════════════════════════════ -->
+  <div id="chat-col">
+
+    <!-- Header -->
+    <div id="chat-header">
+      <div>
+        <div class="disp" style="font-size:0.72rem; font-weight:700; letter-spacing:0.08em;
+                                  text-transform:uppercase; color:var(--text);">Interactive Chat</div>
+        <div style="font-size:0.65rem; color:var(--text-3); margin-top:1px;">
+          every message passes through the full detection cascade in real time
+        </div>
+      </div>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:0.6rem;">
+        <span id="session-badge" class="mono"
+              style="font-size:0.62rem; color:var(--text-3); padding:0.2rem 0.5rem;
+                     background:var(--raised); border:1px solid var(--border); border-radius:4px;">
+          new session
+        </span>
+        <button onclick="clearChat()" title="New session"
+                style="background:none; border:1px solid var(--border); border-radius:5px;
+                       color:var(--text-2); font-size:0.68rem; padding:0.25rem 0.6rem;
+                       cursor:pointer; font-family:inherit;">
+          New
+        </button>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="messages">
+      <!-- Welcome -->
+      <div id="welcome-msg" style="margin: auto 0; text-align:center; padding: 2rem 1rem;">
+        <div style="font-size:2rem; margin-bottom:0.75rem; opacity:0.3;">✦</div>
+        <div class="disp" style="font-size:0.9rem; font-weight:700; color:var(--text);
+                                  letter-spacing:0.06em; margin-bottom:0.4rem;">
+          Preflight Chat
+        </div>
+        <div style="font-size:0.75rem; color:var(--text-3); max-width:320px; margin:0 auto; line-height:1.6;">
+          Send any message — Preflight runs PII detection, injection analysis,
+          groundedness verification, and model routing in real time.
+          Watch the analysis panel update with each reply.
+        </div>
+      </div>
+    </div>
+
+    <!-- Input bar -->
+    <div id="input-bar">
+      <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+        <label style="font-size:0.63rem; color:var(--text-3);">Model</label>
+        <select id="model-select">
+          <option value="claude-sonnet-5">claude-sonnet-5</option>
+          <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+          <option value="gpt-4o-mini">gpt-4o-mini</option>
+          <option value="gpt-4o">gpt-4o</option>
+        </select>
+        <span id="turn-counter" style="margin-left:auto; font-size:0.62rem; color:var(--text-3);">
+          turn 1
+        </span>
+      </div>
+      <div id="input-row">
+        <textarea id="msg-input" rows="1"
+                  placeholder="Send a message… (Enter to send, Shift+Enter for newline)"></textarea>
+        <button id="send-btn" onclick="sendMessage()" title="Send">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 8L14 2L8 14L7 9L2 8Z" fill="white"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /chat-col -->
+
+
+  <!-- ══════════════════════════════════════════════════════════════
+       Right: Analysis panel
+       ════════════════════════════════════════════════════════════ -->
+  <div id="analysis-col">
+
+    <div id="analysis-header">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="1" width="12" height="12" rx="2" stroke="var(--text-3)" stroke-width="1.2"/>
+        <path d="M4 7h6M4 4.5h4M4 9.5h3" stroke="var(--text-3)" stroke-width="1" stroke-linecap="round"/>
+      </svg>
+      <span class="disp" style="font-size:0.72rem; font-weight:700; letter-spacing:0.08em;
+                                  text-transform:uppercase; color:var(--text-2);">
+        Preflight Analysis
+      </span>
+      <span id="analysis-turn-badge" style="display:none;
+        font-size:0.62rem; color:var(--text-3); margin-left:auto;
+        font-family:'IBM Plex Mono',monospace;">
+      </span>
+    </div>
+
+    <div id="analysis-body">
+      <div id="empty-state">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" opacity="0.3">
+          <circle cx="20" cy="20" r="18" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M13 20l5 5 9-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <div class="disp" style="font-size:0.8rem; font-weight:600; letter-spacing:0.06em;">
+          Awaiting message
+        </div>
+        <div style="font-size:0.68rem; line-height:1.6; max-width:240px;">
+          Send a message to see the pipeline breakdown, risk scores,
+          routing decision, and detector findings here.
+        </div>
+      </div>
+      <div id="analysis-content" style="display:none;"></div>
+    </div>
+
+  </div><!-- /analysis-col -->
+
+</div><!-- /chat-layout -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── State ─────────────────────────────────────────────────────────
+let sessionId  = 'chat-' + Math.random().toString(36).substr(2, 8);
+let turn       = 1;
+let history    = [];
+let isSending  = false;
+
+document.getElementById('session-badge').textContent = sessionId.slice(0, 14);
+
+// ── Input auto-resize ──────────────────────────────────────────────
+const input = document.getElementById('msg-input');
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+});
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+// ── Send message ──────────────────────────────────────────────────
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text || isSending) return;
+
+  // Hide welcome
+  const welcome = document.getElementById('welcome-msg');
+  if (welcome) welcome.remove();
+
+  input.value = '';
+  input.style.height = 'auto';
+  isSending = true;
+  document.getElementById('send-btn').disabled = true;
+
+  const model = document.getElementById('model-select').value;
+  const currentTurn = turn;
+
+  appendMessage('user', text);
+  history.push({ role: 'user', content: text });
+
+  const loadingId = appendLoading();
+  showAnalysisLoading(currentTurn);
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: text,
+        session_id: sessionId,
+        turn: currentTurn,
+        model: model,
+        messages: history,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    removeLoading(loadingId);
+
+    const reply = data.blocked
+      ? `⚠ Blocked at Stage ${data.stage}: ${(data.faults || []).join(', ')}`
+      : data.response;
+
+    appendMessage('assistant', reply, data.action);
+    history.push({ role: 'assistant', content: reply });
+    turn++;
+    document.getElementById('turn-counter').textContent = `turn ${turn}`;
+
+    renderAnalysis(data, currentTurn);
+
+  } catch (err) {
+    removeLoading(loadingId);
+    appendMessage('assistant', `Could not reach Preflight: ${err.message}`, 'block');
+  } finally {
+    isSending = false;
+    document.getElementById('send-btn').disabled = false;
+    input.focus();
+  }
+}
+
+// ── Clear / new session ───────────────────────────────────────────
+function clearChat() {
+  sessionId = 'chat-' + Math.random().toString(36).substr(2, 8);
+  document.getElementById('session-badge').textContent = sessionId.slice(0, 14);
+  turn    = 1;
+  history = [];
+  document.getElementById('turn-counter').textContent = 'turn 1';
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('empty-state').style.display = 'flex';
+  document.getElementById('analysis-content').style.display = 'none';
+  document.getElementById('analysis-turn-badge').style.display = 'none';
+}
+
+// ── Message rendering ─────────────────────────────────────────────
+function appendMessage(role, text, action) {
+  const msgs = document.getElementById('messages');
+  const div  = document.createElement('div');
+  div.className = `msg msg-${role}`;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta';
+
+  if (role === 'assistant' && action) {
+    const badge = makeActionBadge(action, true);
+    meta.appendChild(badge);
+  }
+  const time = document.createElement('span');
+  time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  meta.appendChild(time);
+
+  div.appendChild(bubble);
+  div.appendChild(meta);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+let loadingCounter = 0;
+function appendLoading() {
+  const id = 'loading-' + (++loadingCounter);
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.id = id;
+  div.className = 'msg msg-assistant';
+  div.innerHTML = `<div class="msg-bubble" style="padding:0.65rem 1rem;">
+    <span class="typing-dot"></span>
+    <span class="typing-dot"></span>
+    <span class="typing-dot"></span>
+  </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+function removeLoading(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+// ── Analysis panel helpers ────────────────────────────────────────
+function actionMeta(action) {
+  const map = {
+    pass:               { color: 'var(--green)', bg: 'rgba(57,184,122,0.1)', border: 'rgba(57,184,122,0.25)' },
+    pass_with_citations:{ color: 'var(--green)', bg: 'rgba(57,184,122,0.1)', border: 'rgba(57,184,122,0.25)' },
+    redact:             { color: 'var(--amber)', bg: 'rgba(201,149,48,0.1)', border: 'rgba(201,149,48,0.25)' },
+    regenerate:         { color: 'var(--amber)', bg: 'rgba(201,149,48,0.1)', border: 'rgba(201,149,48,0.25)' },
+    escalate:           { color: 'var(--red)',   bg: 'rgba(195,59,56,0.1)',  border: 'rgba(195,59,56,0.25)' },
+    block:              { color: 'var(--red)',   bg: 'rgba(195,59,56,0.1)',  border: 'rgba(195,59,56,0.25)' },
+  };
+  return map[action] || { color: 'var(--text-2)', bg: 'var(--raised)', border: 'var(--border)' };
+}
+
+function makeActionBadge(action, small) {
+  const { color, bg, border } = actionMeta(action);
+  const span = document.createElement('span');
+  span.style.cssText = `display:inline-flex; align-items:center; padding:${small?'0.1rem 0.4rem':'0.2rem 0.6rem'};
+    border-radius:4px; font-size:${small?'0.6':'0.7'}rem; font-weight:700;
+    letter-spacing:0.07em; text-transform:uppercase; font-family:'IBM Plex Sans Condensed',sans-serif;
+    background:${bg}; color:${color}; border:1px solid ${border};`;
+  span.textContent = action.replace('_', ' ');
+  return span;
+}
+
+function riskColor(val) {
+  if (val >= 0.6) return 'var(--red)';
+  if (val >= 0.3) return 'var(--amber)';
+  return 'var(--green)';
+}
+
+function riskBar(label, val) {
+  const color = riskColor(val);
+  const pct   = Math.round(val * 100);
+  return `<div class="risk-row">
+    <span class="risk-label">${label}</span>
+    <div class="risk-track"><div class="risk-fill" style="width:${pct}%; background:${color};"></div></div>
+    <span class="risk-value" style="color:${color};">${val.toFixed(2)}</span>
+  </div>`;
+}
+
+// ── Loading state for analysis panel ─────────────────────────────
+function showAnalysisLoading(t) {
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('analysis-content').style.display = 'block';
+  document.getElementById('analysis-turn-badge').style.display = 'inline';
+  document.getElementById('analysis-turn-badge').textContent = `T${t}`;
+  document.getElementById('analysis-content').innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:0.75rem; opacity:0.5;">
+      ${[...Array(4)].map((_,i) => `
+        <div style="height:${12+i*4}px; background:var(--raised); border-radius:4px;
+                    width:${[90,70,85,60][i]}%; animation: pulse 1.2s ${i*0.15}s infinite alternate;">
+        </div>`).join('')}
+    </div>
+    <style>@keyframes pulse{from{opacity:0.3}to{opacity:0.7}}</style>`;
+}
+
+// ── Full analysis render ──────────────────────────────────────────
+function renderAnalysis(data, t) {
+  const { color, bg, border } = actionMeta(data.action);
+  const stages  = buildPipeline(data);
+  const routing = buildRouting(data);
+  const rRisk   = buildRiskSection('Response Risk', [
+    ['Groundedness', (data.risk||{}).groundedness||0],
+    ['Uncertainty',  (data.risk||{}).uncertainty||0],
+    ['Bias',         (data.risk||{}).bias||0],
+    ['Privacy',      (data.risk||{}).privacy||0],
+    ['Injection',    (data.risk||{}).injection||0],
+    ['Cost',         (data.risk||{}).cost||0],
+  ]);
+  const sRisk = buildRiskSection('Session Risk', [
+    ['Escalation grad.', (data.session_risk||{}).escalation_gradient||0],
+    ['Contamination',    (data.session_risk||{}).contamination||0],
+    ['Retry burn',       (data.session_risk||{}).retry_burn||0],
+    ['Cost creep',       (data.session_risk||{}).cost_creep||0],
+  ]);
+  const findings  = buildFindings(data.findings || []);
+  const triggered = buildTriggered(data.triggered_by || []);
+
+  document.getElementById('analysis-content').innerHTML = `
+<div class="fade-up">
+
+  <!-- Decision banner -->
+  <div class="decision-banner a-section"
+       style="background:${bg}; border-color:${border}; margin-bottom:1rem;">
+    <div style="display:flex; align-items:baseline; gap:0.75rem; flex-wrap:wrap;">
+      <span class="disp" style="font-size:1.3rem; font-weight:700; color:${color};
+                                 letter-spacing:0.08em; text-transform:uppercase; line-height:1;">
+        ${(data.action||'').replace('_',' ')}
+      </span>
+      ${data.demo_mode ? '<span style="font-size:0.6rem;color:var(--amber);font-family:\'IBM Plex Mono\',monospace;margin-top:2px;">DEMO MODE</span>' : ''}
+      <span class="mono" style="margin-left:auto; font-size:0.65rem; color:${color}; opacity:0.7;">
+        ${data.latency_ms?.toFixed(1)}ms
+      </span>
+    </div>
+    <div style="font-size:0.7rem; color:var(--text-2); margin-top:0.35rem; line-height:1.45;">
+      ${data.reason || ''}
+    </div>
+  </div>
+
+  ${stages}
+  ${routing}
+  ${rRisk}
+  ${sRisk}
+  ${findings}
+  ${triggered}
+
+</div>`;
+}
+
+function buildPipeline(data) {
+  const sl = data.stage_latency_ms || {};
+  const defs = [
+    { key: 'preflight',    label: 'S0', title: 'Preflight' },
+    { key: 'streaming',    label: 'S1', title: 'Streaming' },
+    { key: 'verification', label: 'S2', title: 'Verify' },
+    { key: 'deep',         label: 'S3', title: 'Deep' },
+  ];
+  const { color } = actionMeta(data.action);
+
+  let steps = defs.map((d, i) => {
+    const ms      = sl[d.key];
+    const skipped = ms === undefined || ms === null;
+    const stepColor  = skipped ? 'var(--text-3)' : 'var(--green)';
+    const stepBorder = skipped ? 'var(--border)' : 'rgba(57,184,122,0.4)';
+    const latLabel   = skipped ? 'skip' : `${Number(ms).toFixed(1)}ms`;
+    return `
+      ${i > 0 ? '<span class="pipe-arrow">›</span>' : ''}
+      <div class="pipe-step ${skipped?'skipped':'active'}" title="${d.title}">
+        <span class="mono" style="font-size:0.7rem; font-weight:600; color:${stepColor};">${d.label}</span>
+        <span class="mono" style="font-size:0.55rem; color:var(--text-3);">${latLabel}</span>
+      </div>`;
+  }).join('');
+
+  steps += `<span class="pipe-arrow">›</span>
+    <div style="padding:0.3rem 0.6rem; border-radius:6px; border:1px solid ${color}4D; background:${color}18;">
+      <span class="disp" style="font-size:0.68rem; font-weight:700; color:${color};
+                                  letter-spacing:0.05em; text-transform:uppercase;">
+        ${(data.action||'').replace('_',' ')}
+      </span>
+    </div>`;
+
+  return `<div class="a-section">
+    <div class="section-label">Detection Pipeline</div>
+    <div class="pipeline-steps">${steps}</div>
+  </div>`;
+}
+
+function buildRouting(data) {
+  if (!data.requested_model) return '';
+  const same = data.requested_model === data.routed_model;
+  const saved = data.cost_saved_usd > 0;
+  return `<div class="a-section">
+    <div class="section-label">Model Routing</div>
+    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+      <span class="mono" style="font-size:0.72rem; color:var(--text-2);">${data.requested_model}</span>
+      <span style="color:var(--text-3); font-size:0.75rem;">→</span>
+      <span class="mono" style="font-size:0.72rem; color:${same?'var(--text-2)':'var(--green)'};">${data.routed_model||data.requested_model}</span>
+      ${saved ? `<span style="font-size:0.62rem; color:var(--green); margin-left:auto;">
+                   $${data.cost_saved_usd.toFixed(5)} saved</span>` : ''}
+    </div>
+    ${data.cost_usd > 0 ? `<div style="font-size:0.62rem; color:var(--text-3); margin-top:0.3rem;">
+      cost: $${data.cost_usd.toFixed(5)}</div>` : ''}
+  </div>`;
+}
+
+function buildRiskSection(title, pairs) {
+  const bars = pairs.map(([label, val]) => riskBar(label, val)).join('');
+  return `<div class="a-section">
+    <div class="section-label">${title}</div>
+    ${bars}
+  </div>`;
+}
+
+function buildFindings(findings) {
+  if (!findings.length) return '';
+  const rows = findings.map(f => {
+    const c = riskColor(f.score || 0);
+    const skipped = f.ran === false;
+    return `<div class="finder-row">
+      <span class="finder-name" style="${skipped?'opacity:0.4':''}">${f.detector}${skipped?' <em>(skipped)</em>':''}</span>
+      ${f.detail ? `<span class="finder-detail">${f.detail.slice(0,50)}</span>` : ''}
+      <span class="finder-score" style="color:${c};">${(f.score||0).toFixed(2)}</span>
+    </div>`;
+  }).join('');
+  return `<div class="a-section">
+    <div class="section-label">Detector Findings</div>
+    ${rows}
+  </div>`;
+}
+
+function buildTriggered(rules) {
+  if (!rules || !rules.length) return '';
+  const { color } = actionMeta('escalate');
+  const tags = rules.map(r =>
+    `<span class="mono" style="font-size:0.63rem; color:${color}; background:${color}18;
+      padding:0.15rem 0.4rem; border-radius:3px;">${r}</span>`
+  ).join(' ');
+  return `<div class="a-section">
+    <div class="section-label">Triggered Rules</div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.35rem;">${tags}</div>
+  </div>`;
+}
+</script>
+{% endblock %}

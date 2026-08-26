@@ -202,6 +202,13 @@ async def submit_review(
     return HTMLResponse(html)
 
 
+@router.get("/console/chat", response_class=HTMLResponse)
+async def chat_view(request: Request):
+    return TEMPLATES.TemplateResponse(request, "chat.html", {
+        **_ctx("chat", {}),
+    })
+
+
 @router.get("/console/governance", response_class=HTMLResponse)
 async def governance(request: Request):
     stats = _ledger.stats()
