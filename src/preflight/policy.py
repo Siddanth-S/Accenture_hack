@@ -66,6 +66,7 @@ class Policy:
     jurisdiction: str
     retention_days: int
     use_cases: dict[str, UseCasePolicy]
+    version: str = ""
     version_hash: str = ""
 
     def for_use_case(self, name: str) -> UseCasePolicy:
@@ -114,6 +115,7 @@ def load_policy(path: str | Path) -> Policy:
         jurisdiction=raw.get("jurisdiction", "unspecified"),
         retention_days=int(raw.get("retention_days", 365)),
         use_cases=use_cases,
+        version=str(raw.get("version", "")),
         version_hash=version_hash,
     )
 

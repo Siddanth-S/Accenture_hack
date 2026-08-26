@@ -397,8 +397,10 @@ async def api_chat(request: Request):
 @app.get("/health")
 async def health():
     return {
-        "status": "ok", "policy": _policy.id,
-        "policy_version": _policy.version_hash,
+        "status": "ok",
+        "policy": _policy.id,
+        "policy_version": _policy.version,
+        "policy_hash": _policy.version_hash,
         "jurisdiction": _policy.jurisdiction,
         "upstream": UPSTREAM_BASE_URL,
         "demo_mode": not bool(UPSTREAM_API_KEY),

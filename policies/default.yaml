@@ -1,4 +1,5 @@
 id: preflight-in-default
+version: "1.0.0"
 jurisdiction: "IN — DPDP Act 2023"
 retention_days: 180
 
