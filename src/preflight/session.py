@@ -64,6 +64,38 @@ def content_tokens(text: str) -> frozenset[str]:
     )
 
 
+# Terms that recur across any same-domain conversation and therefore carry no
+# contamination signal on their own. Reusing them is "staying on topic", not
+# "reasoning from a fabrication". Excluding them is the difference between
+# flagging the turn that inherits a fabricated fee and flagging every polite
+# on-topic follow-up in the same thread.
+_GENERIC_TERMS = frozenset({
+    "about", "after", "again", "allow", "allows", "apply", "applies",
+    "available", "based", "before", "being", "between", "could", "current",
+    "customer", "customers", "detail", "details", "during", "eligible",
+    "eligibility", "following", "general", "generally", "include", "includes",
+    "including", "information", "month", "months", "needs", "period", "please",
+    "policy", "product", "products", "program", "programme", "provide",
+    "provided", "provides", "require", "required", "requires", "requirement",
+    "service", "services", "should", "their", "there", "these", "those",
+    "three", "under", "using", "value", "various", "which", "while", "would",
+    "your", "within", "request", "account",
+})
+
+
+def distinctive_terms(text: str) -> set[str]:
+    """Content terms that actually carry contamination signal.
+
+    Drops generic same-domain vocabulary and keeps distinctive words plus any
+    concrete figure — a fabricated fee, rate or deadline is precisely what a
+    later turn reasons FROM, so numbers are signal, not noise.
+    """
+    low = text.lower()
+    words = {w for w in re.findall(r"[a-z]{5,}", low) if w not in _GENERIC_TERMS}
+    figures = set(re.findall(r"\d+(?:\.\d+)?%?", low))
+    return words | figures
+
+
 def semantic_fingerprint(text: str) -> str:
     """Stable id for a question's content tokens.
 
@@ -207,17 +239,22 @@ class SessionState:
 
         prior_terms: set[str] = set()
         for c in self.ungrounded_ledger.values():
-            prior_terms |= {w for w in re.findall(r"[a-z]{5,}", c.text.lower())}
+            prior_terms |= distinctive_terms(c.text)
         if not prior_terms:
             return 0.0
 
         hits = 0
         for c in current_claims:
-            terms = {w for w in re.findall(r"[a-z]{5,}", c.text.lower())}
+            terms = distinctive_terms(c.text)
             if not terms:
                 continue
-            overlap = len(terms & prior_terms) / len(terms)
-            if overlap >= 0.30:
+            shared = terms & prior_terms
+            overlap = len(shared) / len(terms)
+            # Two guards against staying-on-topic false positives: the overlap
+            # must clear the threshold AND rest on >=2 distinctive tokens, so a
+            # single shared domain word can never brand a benign, grounded
+            # follow-up as contaminated.
+            if overlap >= 0.30 and len(shared) >= 2:
                 hits += 1
                 c.inherited_from = next(iter(self.ungrounded_ledger))
 

@@ -57,11 +57,17 @@ stateless by construction.
 
 ```bash
 pip install -r requirements.txt
-python -m eval.run_scenarios
+python -m eval.run_scenarios          # stateless vs session-aware detection
+python -m eval.calibrate              # conformal threshold selection (the proof)
 ```
 
 No model downloads, no GPU, no API keys. Detectors degrade to documented
 lexical fallbacks and say so in the output.
+
+`eval.calibrate` scores a labelled corpus through the real groundedness
+pipeline and reports the threshold the conformal guarantee selects. At a small
+sample it *refuses* the 5% budget and says so — the number is derived, never
+hand-typed. `--write` patches the policy; `--alpha` sets the risk budget.
 
 ---
 
@@ -101,11 +107,14 @@ so we can redact or regenerate one clause instead of blocking a whole answer.
 real-time ground truth, and a checker that forces every claim into
 supported/unsupported is manufacturing confidence it does not have.
 
-**Conformal risk control** (`calibration.py`) — thresholds are derived from an
-operator-chosen risk budget, not hand-tuned. The claim we can defend:
-*"the probability an unsafe response passes is bounded at 5%, with 95%
-confidence, distribution-free."* The knob a compliance officer turns is
-"what miss rate can we accept", not "what should the groundedness threshold be".
+**Conformal risk control** (`calibration.py`, run via `python -m eval.calibrate`)
+— thresholds are derived from an operator-chosen risk budget, not hand-tuned.
+The claim we can defend: *"the probability an unsafe response passes is bounded
+at alpha, with 1−delta confidence, distribution-free."* The knob a compliance
+officer turns is "what miss rate can we accept", not "what should the
+groundedness threshold be". The calibrator is honest about its own sample size:
+below the data needed for a 5% budget it refuses to emit a threshold rather
+than shipping an undefended number.
 
 **Cost as a gate, not an invoice** (`router.py`) — routing happens before a
 token exists. High-stakes traffic is never downgraded, and we never route
@@ -137,6 +146,11 @@ we are arguing against.
 - The conformal guarantee assumes calibration and production data are
   exchangeable. Under distribution shift it degrades — which is why drift
   monitoring must feed recalibration.
+- The calibration corpus (`data/calibration/`) is *synthetic* — templated
+  across domains for coverage and reproducibility, not sampled from production
+  traffic. The groundedness scores it produces are real detector outputs; the
+  inputs are generated. It exists to make the conformal procedure runnable and
+  the guarantee's sample-size honesty visible, not to stand in for real data.
 - Counterfactual bias probing requires a second generation. It is sampled,
   not run per-request, and the cost is real.
 - `preflight-sessions-v1` is 7 hand-built sessions. Enough to demonstrate the
