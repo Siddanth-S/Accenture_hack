@@ -246,6 +246,9 @@ class Engine:
                 cost_usd=cost, action=Action.PASS, prompt_text=prompt,
                 tokens_in=result.tokens_in, tokens_out=result.tokens_out,
             )
+            # Persist the mutated state before re-assessing. No-op for the
+            # in-memory backend; the actual write-back for Redis.
+            self.sessions.save(st)
             # Re-assess AFTER recording so this turn counts toward the trend.
             session_risk = st.assess(claims)
 

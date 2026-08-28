@@ -8,6 +8,10 @@ jinja2>=3.1
 httpx>=0.27
 python-multipart>=0.0.9
 
+# Production session store (optional — set PREFLIGHT_REDIS_URL to activate;
+# the store degrades to in-memory with a warning if this is absent/unreachable)
+# redis>=5.0
+
 # Stage 2/3 detectors (optional — engine degrades explicitly without them)
 # onnxruntime>=1.17
 # transformers>=4.40

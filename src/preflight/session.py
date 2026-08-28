@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
+import pickle
 import re
+import sys
 import time
 
 from .schemas import Claim, RequestContext, RiskVector, SessionRisk, TurnRecord
@@ -318,37 +321,153 @@ class SessionState:
         return out
 
 
-class SessionStore:
-    """In-process session store.
+# --------------------------------------------------------------------------
+# Backends
+#
+# The accumulator's trajectory logic lives entirely in SessionState. A backend
+# only moves bytes, so swapping one for the other cannot change a single
+# detection outcome — the property the old docstring promised but the old code
+# never actually offered, because there was only ever one backend.
+# --------------------------------------------------------------------------
 
-    Redis-backed in deployment; a dict here so the prototype runs with
-    `docker compose up` and nothing else. The interface is the same either
-    way, which is the point — swapping the backing store must not change
-    accumulator semantics.
+
+class _InMemoryBackend:
+    """Process-local dict.
+
+    Fine for the prototype and a single worker, but the accumulator resets on
+    restart and does NOT span workers: two uvicorn workers behind a load
+    balancer keep separate copies, so a session's risk trajectory fragments
+    across whichever worker happened to serve each turn. That silent failure
+    is the entire reason the Redis backend exists.
     """
 
+    kind = "memory"
+
     def __init__(self) -> None:
-        self._sessions: dict[str, SessionState] = {}
+        self._d: dict[str, SessionState] = {}
 
-    def get(self, session_id: str, budget_usd: float = 0.50) -> SessionState:
+    def load(self, sid: str) -> SessionState | None:
         self._evict()
-        if session_id not in self._sessions:
-            self._sessions[session_id] = SessionState(session_id, budget_usd)
-        return self._sessions[session_id]
+        return self._d.get(sid)
 
-    def reset(self, session_id: str) -> None:
-        self._sessions.pop(session_id, None)
+    def save(self, st: SessionState) -> None:
+        self._d[st.session_id] = st
+
+    def delete(self, sid: str) -> None:
+        self._d.pop(sid, None)
 
     def all(self) -> list[SessionState]:
-        return sorted(
-            self._sessions.values(), key=lambda s: s.last_seen, reverse=True
-        )
+        self._evict()
+        return list(self._d.values())
 
     def _evict(self) -> None:
         now = time.time()
-        dead = [
-            k for k, v in self._sessions.items()
-            if now - v.last_seen > SESSION_TTL_S
-        ]
-        for k in dead:
-            del self._sessions[k]
+        for k in [k for k, v in self._d.items()
+                  if now - v.last_seen > SESSION_TTL_S]:
+            del self._d[k]
+
+
+class _RedisBackend:
+    """Redis-backed store — survives restarts, shared across workers.
+
+    State is pickled: the accumulator holds enums, frozensets and pydantic
+    models, all of which pickle natively, and the store is trusted (this
+    service is the only writer). Redis enforces the TTL itself, so eviction is
+    free and consistent across every worker instead of each worker running its
+    own eviction clock.
+    """
+
+    kind = "redis"
+    _PREFIX = "preflight:session:"
+
+    def __init__(self, client) -> None:
+        self._r = client
+
+    def _key(self, sid: str) -> str:
+        return f"{self._PREFIX}{sid}"
+
+    def load(self, sid: str) -> SessionState | None:
+        raw = self._r.get(self._key(sid))
+        return pickle.loads(raw) if raw else None
+
+    def save(self, st: SessionState) -> None:
+        self._r.set(self._key(st.session_id), pickle.dumps(st), ex=SESSION_TTL_S)
+
+    def delete(self, sid: str) -> None:
+        self._r.delete(self._key(sid))
+
+    def all(self) -> list[SessionState]:
+        out: list[SessionState] = []
+        for k in self._r.scan_iter(f"{self._PREFIX}*"):
+            raw = self._r.get(k)
+            if raw:
+                out.append(pickle.loads(raw))
+        return out
+
+
+def _make_backend():
+    """Redis if PREFLIGHT_REDIS_URL is set and reachable, else in-memory.
+
+    A configured-but-unreachable Redis degrades to in-memory with a loud
+    warning rather than crashing or pretending — the same explicit-degradation
+    contract the detectors follow. Silently losing session state would be
+    worse than saying so.
+    """
+    url = os.getenv("PREFLIGHT_REDIS_URL")
+    if not url:
+        return _InMemoryBackend()
+    try:
+        import redis  # optional dependency; only imported when configured
+        client = redis.Redis.from_url(url, socket_connect_timeout=1)
+        client.ping()
+        return _RedisBackend(client)
+    except Exception as exc:  # ImportError or connection failure
+        print(
+            f"[preflight] PREFLIGHT_REDIS_URL set but Redis is unavailable "
+            f"({exc!r}); falling back to in-memory session store. Session risk "
+            f"will NOT survive restart or span workers.",
+            file=sys.stderr,
+        )
+        return _InMemoryBackend()
+
+
+class SessionStore:
+    """Session store with a pluggable backend.
+
+    In-memory by default so the prototype runs with nothing installed; Redis
+    when PREFLIGHT_REDIS_URL is set, so the accumulator survives restarts and
+    is shared across workers. Because the backend only persists bytes, the
+    detection semantics are identical either way.
+
+    Note the read/mutate/`save` cycle: callers get() a state, mutate it via
+    record(), then must call save() so the mutation is persisted. For the
+    in-memory backend get() returns the live object and save() is idempotent;
+    for Redis, save() is what actually writes the turn back. Making save()
+    explicit keeps both backends honest instead of relying on object identity.
+    """
+
+    def __init__(self, backend=None) -> None:
+        self._backend = backend if backend is not None else _make_backend()
+
+    @property
+    def kind(self) -> str:
+        return getattr(self._backend, "kind", "custom")
+
+    def get(self, session_id: str, budget_usd: float = 0.50) -> SessionState:
+        st = self._backend.load(session_id)
+        if st is None:
+            st = SessionState(session_id, budget_usd)
+            self._backend.save(st)
+        return st
+
+    def save(self, state: SessionState) -> None:
+        state.last_seen = time.time()
+        self._backend.save(state)
+
+    def reset(self, session_id: str) -> None:
+        self._backend.delete(session_id)
+
+    def all(self) -> list[SessionState]:
+        return sorted(
+            self._backend.all(), key=lambda s: s.last_seen, reverse=True
+        )

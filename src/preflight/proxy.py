@@ -453,6 +453,7 @@ async def health():
         "jurisdiction": _policy.jurisdiction,
         "upstream": UPSTREAM_BASE_URL,
         "demo_mode": not bool(UPSTREAM_API_KEY),
+        "session_store": _sessions.kind,
     }
 
 
