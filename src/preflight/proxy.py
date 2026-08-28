@@ -19,6 +19,7 @@ Config (env vars or .env file):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -43,12 +44,12 @@ if _env_file.exists():
             os.environ.setdefault(_k.strip(), _v.strip())
 
 from .console import router as console_router  # noqa: E402
-from .detectors.core import CANARY             # noqa: E402
+from .detectors.core import CANARY, counterfactual_pairs  # noqa: E402
 from .engine import Engine, InferenceResult    # noqa: E402
 from .ledger import Ledger                     # noqa: E402
 from .nli import load_nli                       # noqa: E402
 from .policy import load_policy                # noqa: E402
-from .schemas import Action, RequestContext    # noqa: E402
+from .schemas import Action, RequestContext, Stakes  # noqa: E402
 from .session import SessionStore              # noqa: E402
 from . import state                            # noqa: E402
 
@@ -140,6 +141,64 @@ def _with_canary(messages: list[dict]) -> list[dict]:
             m["content"] = f"{m.get('content', '')}\n\n{_CANARY_DIRECTIVE}".strip()
             return out
     return [{"role": "system", "content": _CANARY_DIRECTIVE}, *out]
+
+
+# How many extra generations the deep tier draws for self-consistency. This is
+# real spend and real latency, so it is gated by stakes (HIGH/CRITICAL only) and
+# tunable — 0 disables the tail entirely. The honesty the README insists on:
+# semantic entropy needs N samples and counterfactual bias needs a second
+# generation; we run them where the stakes justify the cost, not everywhere.
+_DEEP_SAMPLES = int(os.getenv("PREFLIGHT_DEEP_SAMPLES", "3"))
+
+
+async def _deep_probe(
+    client: httpx.AsyncClient, model_id: str, messages: list[dict],
+    prompt: str, n: int,
+) -> tuple[list[str], str | None]:
+    """Stage-3 evidence gathering for high-stakes traffic.
+
+    * N extra generations at raised temperature -> semantic-entropy
+      self-consistency. If the model means different things across samples, it
+      is guessing; low token-entropy with high semantic-entropy is exactly
+      'confidently wrong'.
+    * One protected-attribute counterfactual -> bias divergence. If the answer
+      moves when only a name/gender/religion changes, that is a bias signal no
+      amount of reading the single original response would reveal.
+
+    Both need generations the main call does not produce, which is why they
+    live here and run only when stakes justify the spend.
+    """
+    async def _gen(msgs: list[dict], temperature: float) -> str:
+        r = await client.post(
+            f"{UPSTREAM_BASE_URL}/chat/completions",
+            json={"model": model_id, "messages": msgs, "stream": False,
+                  "temperature": temperature},
+            headers={"Authorization": f"Bearer {UPSTREAM_API_KEY}",
+                     "Content-Type": "application/json"},
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
+
+    sample_msgs = _with_canary(messages)
+    tasks = [_gen(sample_msgs, 0.7) for _ in range(max(0, n))]
+
+    cf_task = None
+    pairs = counterfactual_pairs(prompt)
+    if pairs:
+        _, swapped_prompt = pairs[0]
+        cf_task = _gen(_with_canary([{"role": "user", "content": swapped_prompt}]), 0.0)
+
+    all_tasks = tasks + ([cf_task] if cf_task else [])
+    results = await asyncio.gather(*all_tasks, return_exceptions=True)
+
+    if cf_task:
+        sample_results, cf_result = results[:-1], results[-1]
+    else:
+        sample_results, cf_result = results, None
+
+    samples = [s for s in sample_results if isinstance(s, str)]
+    cf_text = cf_result if isinstance(cf_result, str) else None
+    return samples, cf_text
 
 
 def _stub_completion(model: str, text: str, tokens_in: int, tokens_out: int) -> dict:
@@ -360,6 +419,10 @@ async def api_chat(request: Request):
 
     tokens_in = max(1, len(prompt.split()) * 4 // 3)
     response_text = ""
+    deep_samples: list[str] | None = None
+    deep_cf: str | None = None
+    stakes = _policy.for_use_case(use_case).stakes
+    deep_on = _DEEP_SAMPLES > 0 and stakes in (Stakes.HIGH, Stakes.CRITICAL)
 
     if not UPSTREAM_API_KEY:
         response_text = (
@@ -386,11 +449,13 @@ async def api_chat(request: Request):
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
+                used_model = upstream_model
                 try:
                     data = await _call_upstream(client, upstream_model)
                 except httpx.HTTPStatusError as exc:
                     # 402 = quota exceeded — fall back to cheapest available model
                     if exc.response.status_code == 402 and upstream_model != _FALLBACK_MODEL:
+                        used_model = _FALLBACK_MODEL
                         data = await _call_upstream(client, _FALLBACK_MODEL)
                     else:
                         raise
@@ -399,11 +464,28 @@ async def api_chat(request: Request):
                 tokens_in  = usage.get("prompt_tokens", tokens_in)
                 tokens_out = usage.get("completion_tokens",
                                        max(1, len(response_text.split()) * 4 // 3))
+
+                # Stage 3 tail — only for high/critical stakes, only if enabled.
+                # Use the model that actually answered, not the requested one,
+                # so a quota fallback on the primary call carries through.
+                if deep_on:
+                    try:
+                        deep_samples, deep_cf = await _deep_probe(
+                            client, used_model, messages, prompt, _DEEP_SAMPLES,
+                        )
+                        # Include the primary answer as one of the samples so the
+                        # cluster count reflects the response actually returned.
+                        deep_samples = [response_text, *(deep_samples or [])]
+                    except Exception:
+                        deep_samples, deep_cf = None, None
         except Exception as exc:
             response_text = f"Upstream error: {exc}"
             tokens_out = 10
 
-    result   = InferenceResult(text=response_text, tokens_in=tokens_in, tokens_out=tokens_out)
+    result   = InferenceResult(
+        text=response_text, tokens_in=tokens_in, tokens_out=tokens_out,
+        samples=deep_samples, counterfactual_text=deep_cf,
+    )
     decision = await _engine.evaluate_response(ctx, prompt, result)
     _ledger.append(decision, _policy.version_hash)
     state.record_turn(session_id, turn, prompt, response_text,
@@ -442,6 +524,13 @@ async def api_chat(request: Request):
         "triggered_by":   decision.triggered_by or [],
         "session_id":     session_id,
         "demo_mode":      not bool(UPSTREAM_API_KEY),
+        # Stage 3 evidence, surfaced so the UI can show WHY (or that it ran):
+        "deep": {
+            "ran":          bool(deep_on and deep_samples),
+            "stakes":       stakes.value,
+            "samples":      deep_samples or [],
+            "counterfactual": deep_cf,
+        },
     })
 
 

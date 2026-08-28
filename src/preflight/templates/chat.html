@@ -696,10 +696,56 @@ function renderAnalysis(data, t) {
     ['Cost creep',(data.session_risk||{}).cost_creep||0],
   ])}
   ${buildFindings(data.findings||[])}
+  ${buildDeep(data)}
   ${buildTriggered(data.triggered_by||[])}
   ${buildScenarioNote()}
 
 </div>`;
+}
+
+function buildDeep(data) {
+  const deep = data.deep;
+  if (!deep || !deep.ran) return '';
+  const samples = deep.samples || [];
+  const findings = data.findings || [];
+  const sem = findings.find(f => f.detector && f.detector.indexOf('entropy.semantic')>=0);
+  const bias = findings.find(f => f.detector && f.detector.indexOf('bias')>=0);
+  const semScore = sem ? (sem.score||0) : 0;
+  const semColor = riskColor(semScore);
+
+  const sampleRows = samples.map((s,i)=>`
+    <div style="display:flex;gap:0.5rem;padding:0.3rem 0;border-top:${i?'1px solid var(--border)':'none'};">
+      <span class="mono" style="font-size:0.55rem;color:var(--text-3);flex-shrink:0;">#${i+1}</span>
+      <span style="font-size:0.63rem;color:var(--text-2);line-height:1.5;">${(s||'').slice(0,160)}${s&&s.length>160?'…':''}</span>
+    </div>`).join('');
+
+  const cf = deep.counterfactual ? `
+    <div style="margin-top:0.55rem;">
+      <div style="font-size:0.6rem;color:var(--text-3);margin-bottom:0.2rem;">
+        Counterfactual (protected-attribute swap) · divergence
+        <span style="color:${riskColor(bias?bias.score:0)};font-weight:600;">${bias?(bias.score||0).toFixed(2):'—'}</span>
+      </div>
+      <div style="font-size:0.63rem;color:var(--text-2);line-height:1.5;
+                  background:rgba(255,255,255,0.02);border-radius:5px;padding:0.4rem 0.55rem;">
+        ${(deep.counterfactual||'').slice(0,180)}${deep.counterfactual&&deep.counterfactual.length>180?'…':''}
+      </div>
+    </div>` : '';
+
+  return `<div class="a-section" style="background:rgba(122,90,212,0.06);
+      border:1px solid rgba(122,90,212,0.25);border-radius:6px;padding:0.65rem 0.9rem;">
+    <div class="section-label" style="color:#9d7ae0;">
+      Stage 3 · Self-consistency probe
+      <span style="float:right;font-size:0.58rem;color:var(--text-3);">${deep.stakes} stakes · ${samples.length} samples</span>
+    </div>
+    <div style="font-size:0.63rem;color:var(--text-2);line-height:1.5;margin:0.15rem 0 0.5rem;">
+      Same prompt, sampled ${samples.length}× at temperature. Semantic entropy
+      <span style="color:${semColor};font-weight:600;">${semScore.toFixed(2)}</span>
+      ${sem?`— ${sem.detail}`:''}.
+      ${semScore>=0.6?'The model does not agree with itself — a confident-but-inconsistent answer.':'The samples converge — self-consistent.'}
+    </div>
+    ${sampleRows}
+    ${cf}
+  </div>`;
 }
 
 function buildScenarioNote() {
