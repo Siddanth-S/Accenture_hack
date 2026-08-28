@@ -233,6 +233,12 @@
         <span class="sc-label">Free</span>
         <span class="sc-desc">No context</span>
       </button>
+      <button class="scenario-btn" onclick="runAttack('escalation')" id="sc-runattack"
+              style="min-width:150px;border-color:rgba(195,59,56,0.5);
+                     background:rgba(195,59,56,0.08);">
+        <span class="sc-label" style="color:var(--red);">▶ Run attack</span>
+        <span class="sc-desc">auto-fire 4 turns — watch the trajectory climb</span>
+      </button>
     </div>
 
     <!-- Messages -->
@@ -462,6 +468,29 @@ function loadScenario(id) {
 
   sequenceIdx = 0;
   setContextIndicator(activeScenario.label + ' · ' + activeScenario.use_case);
+}
+
+// ── One-click attack: auto-fire a scripted multi-turn sequence ────
+async function runAttack(id) {
+  if (isSending) return;
+  loadScenario(id);                       // fresh session, use_case, sources
+  const s = SCENARIOS[id];
+  const prompts = [s.prompt, ...(s.followUps || [])];
+
+  const btn = document.getElementById('sc-runattack');
+  const lbl = btn?.querySelector('.sc-label');
+  const restore = lbl ? lbl.textContent : '';
+  if (btn) { btn.style.pointerEvents = 'none'; btn.classList.add('active'); }
+
+  for (let i = 0; i < prompts.length; i++) {
+    if (lbl) lbl.textContent = `▶ Running… ${i + 1}/${prompts.length}`;
+    input.value = prompts[i];
+    await sendMessage();                   // awaits the full round-trip
+    await new Promise(r => setTimeout(r, 850));  // let the chart animate
+  }
+
+  if (btn) { btn.style.pointerEvents = ''; btn.classList.remove('active'); }
+  if (lbl) lbl.textContent = restore;
 }
 
 function setContextIndicator(text) {
