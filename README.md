@@ -99,7 +99,20 @@ where the stakes justify it.
 are invisible to any single-response checker:
 *escalation gradient* (monotone walk toward a policy boundary),
 *contamination* (turn 6 reasoning from an ungrounded claim asserted at turn 2),
-*retry burn*, *cost creep*.
+*retry burn*, *cost creep*. The store is pluggable: in-memory for the
+prototype, **Redis** when `PREFLIGHT_REDIS_URL` is set — so the accumulator
+survives restarts and is shared across workers instead of silently fragmenting
+per worker behind a load balancer. A configured-but-unreachable Redis degrades
+to in-memory with a loud warning; `/health` reports which backend is live.
+
+**Paraphrase-robust injection detection** (`detectors/core.py`) — fixed-string
+signatures only catch their exact wording ("ignore all previous instructions"),
+so a swap to "kindly disregard the earlier directives" slipped straight
+through. Detection now also matches *intent* — a manipulation verb near a
+control-surface object, with synonyms on both sides — catching paraphrases with
+no model. Heuristic matches escalate rather than hard-block (only a 0.95 exact
+signature blocks), and a trained classifier can be plugged in via
+`set_injection_classifier()`.
 
 **Claim-level verdicts** (`claims.py`) — atomic claims with character offsets,
 so we can redact or regenerate one clause instead of blocking a whole answer.

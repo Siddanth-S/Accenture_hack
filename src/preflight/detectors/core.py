@@ -180,9 +180,70 @@ _INJECTION_SIGNATURES = [
 
 _COMPILED_INJ = [(re.compile(p, re.IGNORECASE), s) for p, s in _INJECTION_SIGNATURES]
 
+# --------------------------------------------------------------------------
+# Intent patterns — paraphrase-robust, still dependency-free.
+#
+# Fixed-string signatures only catch the exact wording they were written for:
+# "ignore all previous instructions" scores 0.95, but "kindly disregard the
+# earlier directives" scored 0.00. That is the classic guardrail failure this
+# project critiques in others, and it sat in our one hard-blocking detector.
+#
+# The fix is to match INTENT combinatorially: a manipulation verb near a
+# control-surface object. Synonyms on both sides mean a swap of ignore->set
+# aside or instructions->guidelines no longer slips through, without a model.
+# These score below the 0.95 hard-block line on purpose — a heuristic paraphrase
+# match is a reason to ESCALATE to a human, not to be certain (see policy.py).
+# --------------------------------------------------------------------------
+
+_VERB = (r"(?:ignore|disregard|forget|discard|drop|overrid\w+|bypass|"
+         r"circumvent|evade|set\s+aside|pay\s+no\s+attention\s+to|"
+         r"do\s+not\s+(?:follow|obey)|stop\s+(?:following|obeying)|"
+         r"no\s+longer\s+(?:follow|obey))")
+_QUALIFIER = (r"(?:all\s+|any\s+|your\s+|the\s+|these\s+|those\s+|previous\s+|"
+              r"prior\s+|above\s+|earlier\s+|initial\s+|original\s+|"
+              r"preceding\s+|system\s+)*")
+_OBJECT = (r"(?:instructions?|directives?|rules?|guidelines?|guardrails?|"
+           r"restrictions?|constraints?|limitations?|filters?|policies|"
+           r"policy|prompts?|programming|training|safety\s+\w+)")
+
+# Adversarial personas a role-override is usually steering toward.
+_ADVERSARIAL = (r"(?:unfiltered|unrestricted|uncensored|jailbroken|"
+                r"without\s+(?:any\s+)?(?:restrictions?|filters?|rules?|limits?)|"
+                r"no\s+(?:restrictions?|filters?|rules?|limits?)|"
+                r"anything\s+(?:now|you\s+want)|evil|dan\b)")
+
+_INTENT_PATTERNS = [
+    # manipulation verb + control object -> strong, but heuristic (escalate).
+    (re.compile(rf"{_VERB}\s+{_QUALIFIER}{_OBJECT}", re.IGNORECASE), 0.90,
+     "override_directive"),
+    # system-prompt / instruction extraction.
+    (re.compile(r"(?:reveal|show|print|display|repeat|output|tell|give|list|"
+                r"what\s+(?:are|is))\s+(?:me\s+)?(?:your\s+|the\s+)?"
+                r"(?:system\s+)?(?:prompt|instructions?|directives?)"
+                r"(?:\s+you\s+(?:were\s+given|received|have))?",
+                re.IGNORECASE), 0.90, "prompt_extraction"),
+    # role override into an adversarial persona.
+    (re.compile(rf"(?:you\s+are\s+now|from\s+now\s+on\s+you|act\s+as|"
+                rf"pretend\s+to\s+be|roleplay\s+as|behave\s+(?:as|like)|"
+                rf"imagine\s+you\s+are)\s+.{{0,40}}?{_ADVERSARIAL}",
+                re.IGNORECASE | re.DOTALL), 0.85, "role_override"),
+]
+
+# Optional pluggable classifier: a callable(text)->float in [0,1]. Left unset
+# so the prototype runs with zero model downloads; a deployment can wire a
+# trained prompt-injection classifier via set_injection_classifier() and its
+# score is blended in (max) with the heuristics.
+_INJECTION_CLASSIFIER = None
+
+
+def set_injection_classifier(fn) -> None:
+    """Install an optional model-based injection classifier: callable(text)->float."""
+    global _INJECTION_CLASSIFIER
+    _INJECTION_CLASSIFIER = fn
+
 
 def detect_injection(text: str, from_retrieved: bool = False) -> Finding:
-    """Injection detection.
+    """Injection detection: fixed signatures + intent heuristics + optional model.
 
     `from_retrieved` matters enormously and is usually ignored. An injection
     typed by a user is an attack on their own session. The same string
@@ -199,17 +260,38 @@ def detect_injection(text: str, from_retrieved: bool = False) -> Finding:
             hits.append(pat.pattern[:40])
             score = max(score, sev)
 
+    for pat, sev, name in _INTENT_PATTERNS:
+        if pat.search(text):
+            hits.append(f"intent:{name}")
+            score = max(score, sev)
+
+    used_model = False
+    if _INJECTION_CLASSIFIER is not None:
+        try:
+            mscore = float(_INJECTION_CLASSIFIER(text))
+            used_model = True
+            if mscore > score:
+                score = mscore
+                hits.append(f"model:{mscore:.2f}")
+        except Exception:
+            pass  # a broken classifier must not take down the gate
+
     if from_retrieved and score > 0:
         score = min(1.0, score * 1.25)
 
+    if hits:
+        detail = f"{len(hits)} signal(s): {', '.join(hits[:4])}"
+        if from_retrieved:
+            detail += " in RETRIEVED context"
+    else:
+        detail = "clean"
+
     return Finding(
-        detector="injection.signature",
+        detector="injection.signature+intent"
+                 + ("+model" if used_model else ""),
         dimension="injection",
         score=round(score, 4),
-        detail=(
-            f"{len(hits)} signature(s)"
-            + (" in RETRIEVED context" if from_retrieved else "")
-        ) if hits else "clean",
+        detail=detail,
         latency_ms=round((time.perf_counter() - t0) * 1000, 3),
     )
 
