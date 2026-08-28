@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from preflight.engine import Engine, InferenceResult          # noqa: E402
 from preflight.policy import load_policy                      # noqa: E402
+from preflight.nli import load_nli                            # noqa: E402
 from preflight.schemas import Action, RequestContext          # noqa: E402
 from preflight.session import SessionStore                    # noqa: E402
 
@@ -63,7 +64,10 @@ async def run_session(engine: Engine, scen: dict, stateless: bool) -> list:
 
 async def main() -> None:
     policy = load_policy(ROOT / "policies" / "default.yaml")
-    engine = Engine(policy, SessionStore())
+    # NLI is opt-in: set PREFLIGHT_NLI_MODEL to run entailment instead of the
+    # lexical fallback. Unset -> None -> lexical, so the default run needs no
+    # model download and stays reproducible.
+    engine = Engine(policy, SessionStore(), nli=load_nli())
     scenarios = load_scenarios()
 
     print(f"\n{BOLD}PREFLIGHT — scenario evaluation{RESET}")
@@ -157,8 +161,10 @@ async def main() -> None:
     print(f"  {DIM}these are structurally invisible to any stateless "
           f"checker{RESET}")
     print()
+    grounded_mode = (f"entailment via {engine.nli.name}" if engine.nli
+                     else "lexical fallback, no NLI model loaded")
     print(f"  latency  p50 {p50:.1f}ms   p95 {p95:.1f}ms  "
-          f"{DIM}(lexical fallback, no NLI model loaded){RESET}")
+          f"{DIM}({grounded_mode}){RESET}")
     print(f"{BOLD}{'=' * 68}{RESET}\n")
 
 

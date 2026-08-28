@@ -150,10 +150,15 @@ intact", and `verify_chain()` names the exact sequence number of any break.
 Stated deliberately — a checker that hides its own failure modes is the thing
 we are arguing against.
 
-- Without an NLI model loaded, groundedness runs on lexical + numeric
-  overlap. Confidence is capped at 0.65 so a fallback verdict can never
-  present as model-grade evidence. Only *missing specific figures* produce an
-  `UNSUPPORTED` verdict; unmatched prose is `UNVERIFIABLE`.
+- Groundedness runs on lexical + numeric overlap **by default**, with
+  confidence capped at 0.65 so a fallback verdict can never present as
+  model-grade evidence. Setting `PREFLIGHT_NLI_MODEL` loads a real 3-way NLI
+  cross-encoder (`nli.py`) and groundedness becomes true entailment — able to
+  separate `CONTRADICTED` (a source says the opposite) from `UNSUPPORTED`
+  (the source is silent), which the lexical path cannot. On the scenario set,
+  turning it on lifts even the *stateless* column to 6/6. Left opt-in so the
+  default run needs no model download; the engine reports which mode is live
+  and `/health` exposes `groundedness: entailment|lexical`.
 - Retry detection uses 4-character prefix stemming, which will occasionally
   collide unrelated words. Embedding cosine is the production path.
 - The conformal guarantee assumes calibration and production data are

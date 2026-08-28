@@ -124,17 +124,29 @@ def verify_claim(
         return claim
 
     if nli is not None:
-        best_id, best_score = None, 0.0
+        # Take the best-entailing source, but track contradiction separately.
+        # Low entailment alone does NOT mean contradiction — a source silent on
+        # the claim also entails it weakly. Only an actively contradicting
+        # source makes a claim CONTRADICTED; the rest is UNSUPPORTED/neutral.
+        # A minimal NLI exposing only entailment() keeps the old behaviour.
+        has_contra = hasattr(nli, "contradiction")
+        best_id, best_entail, max_contra = None, 0.0, 0.0
         for s in sources:
-            score = nli.entailment(premise=s.text, hypothesis=claim.text)
-            if score > best_score:
-                best_id, best_score = s.id, score
-        claim.entailment_score = round(best_score, 4)
+            e = nli.entailment(premise=s.text, hypothesis=claim.text)
+            if e > best_entail:
+                best_id, best_entail = s.id, e
+            if has_contra:
+                max_contra = max(
+                    max_contra, nli.contradiction(premise=s.text, hypothesis=claim.text)
+                )
+        claim.entailment_score = round(best_entail, 4)
         claim.source_id = best_id
-        claim.confidence = round(best_score, 4)
-        if best_score >= 0.70:
+        claim.confidence = round(best_entail, 4)
+        if best_entail >= 0.70:
             claim.verdict = ClaimVerdict.SUPPORTED
-        elif best_score <= 0.15:
+        elif max_contra >= 0.55:
+            claim.verdict = ClaimVerdict.CONTRADICTED
+        elif not has_contra and best_entail <= 0.15:
             claim.verdict = ClaimVerdict.CONTRADICTED
         else:
             claim.verdict = ClaimVerdict.UNSUPPORTED

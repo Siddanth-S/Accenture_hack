@@ -46,6 +46,7 @@ from .console import router as console_router  # noqa: E402
 from .detectors.core import CANARY             # noqa: E402
 from .engine import Engine, InferenceResult    # noqa: E402
 from .ledger import Ledger                     # noqa: E402
+from .nli import load_nli                       # noqa: E402
 from .policy import load_policy                # noqa: E402
 from .schemas import Action, RequestContext    # noqa: E402
 from .session import SessionStore              # noqa: E402
@@ -58,7 +59,8 @@ from . import state                            # noqa: E402
 _policy_path = os.getenv("PREFLIGHT_POLICY", str(ROOT / "policies" / "default.yaml"))
 _policy   = load_policy(_policy_path)
 _sessions = SessionStore()
-_engine   = Engine(_policy, _sessions)
+_nli      = load_nli()  # None unless PREFLIGHT_NLI_MODEL is set -> lexical fallback
+_engine   = Engine(_policy, _sessions, nli=_nli)
 _ledger   = Ledger(ROOT / "data" / "preflight.db")
 
 UPSTREAM_BASE_URL = os.getenv("UPSTREAM_BASE_URL", "https://openrouter.ai/api/v1")
@@ -454,6 +456,8 @@ async def health():
         "upstream": UPSTREAM_BASE_URL,
         "demo_mode": not bool(UPSTREAM_API_KEY),
         "session_store": _sessions.kind,
+        "groundedness": "entailment" if _nli else "lexical",
+        "nli_model": _nli.name if _nli else None,
     }
 
 

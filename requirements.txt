@@ -12,8 +12,12 @@ python-multipart>=0.0.9
 # the store degrades to in-memory with a warning if this is absent/unreachable)
 # redis>=5.0
 
-# Stage 2/3 detectors (optional — engine degrades explicitly without them)
+# Optional NLI entailment for groundedness (Stage 2). Set PREFLIGHT_NLI_MODEL
+# to activate; without these the engine uses the documented lexical fallback.
+# sentence-transformers>=2.2
+# torch>=2.0
+
+# Stage 3 / further detectors (optional — engine degrades explicitly without them)
 # onnxruntime>=1.17
-# transformers>=4.40
 # presidio-analyzer>=2.2
 # opentelemetry-sdk>=1.24
