@@ -154,31 +154,34 @@ async def session_detail(request: Request, session_id: str):
 @router.get("/console/review-form/{seq}", response_class=HTMLResponse)
 async def review_form(request: Request, seq: int):
     html = f"""
-<form hx-post="/console/review/{seq}"
-      hx-target="#review-{seq}"
-      hx-swap="outerHTML"
-      style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
-  <select name="to_action"
-          style="background:var(--panel); border:1px solid var(--border); color:#C8CDD8;
-                 font-size:0.7rem; padding:0.25rem 0.4rem; border-radius:3px;">
-    <option value="pass">pass — approve</option>
-    <option value="escalate">escalate — keep</option>
-    <option value="block">block — harden</option>
-  </select>
-  <input name="rationale" placeholder="rationale (required)" required
-         style="flex:1; min-width:160px; background:var(--panel); border:1px solid var(--border);
-                color:#C8CDD8; font-size:0.7rem; padding:0.25rem 0.5rem; border-radius:3px;"/>
-  <input name="reviewer" placeholder="reviewer id"
-         style="width:130px; background:var(--panel); border:1px solid var(--border);
-                color:#C8CDD8; font-size:0.7rem; padding:0.25rem 0.5rem; border-radius:3px;"/>
-  <button type="submit"
-          style="background:var(--cleared); color:#0D1210; font-size:0.68rem; font-weight:700;
-                 border:none; padding:0.28rem 0.7rem; border-radius:3px; cursor:pointer;
-                 font-family:inherit; letter-spacing:0.04em;">
-    Submit
-  </button>
+<form hx-post="/console/review/{seq}" hx-target="#review-{seq}" hx-swap="outerHTML"
+      class="rvw-form">
+  <div class="rvw-row">
+    <select name="to_action" class="rvw-in rvw-sel">
+      <option value="pass">✓ pass — approve</option>
+      <option value="escalate">↑ escalate — keep</option>
+      <option value="block">■ block — harden</option>
+    </select>
+    <input name="reviewer" placeholder="reviewer id" class="rvw-in" style="width:120px;"/>
+  </div>
+  <input name="rationale" placeholder="rationale (required)…" required class="rvw-in"/>
+  <div class="rvw-row" style="justify-content:flex-end;">
+    <button type="button" class="rvw-cancel"
+            hx-get="/console/review-form-collapse/{seq}" hx-target="#review-{seq}" hx-swap="outerHTML">cancel</button>
+    <button type="submit" class="rvw-submit">Submit override</button>
+  </div>
 </form>"""
     return HTMLResponse(html)
+
+
+@router.get("/console/review-form-collapse/{seq}", response_class=HTMLResponse)
+async def review_form_collapse(request: Request, seq: int):
+    """Collapse the expanded review form back to the trigger link."""
+    return HTMLResponse(
+        f'<div id="review-{seq}">'
+        f'<span class="rvw-trigger" hx-get="/console/review-form/{seq}" '
+        f'hx-target="#review-{seq}" hx-swap="innerHTML">review →</span></div>'
+    )
 
 
 @router.post("/console/review/{seq}", response_class=HTMLResponse)
@@ -194,12 +197,18 @@ async def submit_review(
     ).fetchone()
     from_action = row["action"] if row else "unknown"
     _ledger.record_override(seq, reviewer or "reviewer", from_action, to_action, rationale)
-    color = "var(--cleared)" if to_action == "pass" else "var(--caution)"
+    color = "var(--green)" if to_action == "pass" else ("var(--red)" if to_action == "block" else "var(--amber)")
     html = (
-        f'<span style="font-size:0.68rem; color:{color}; font-weight:600;">'
+        f'<span class="rvw-done" style="color:{color};border-color:{color}55;background:{color}18;">'
         f'✓ {to_action} · {reviewer or "reviewer"}</span>'
     )
     return HTMLResponse(html)
+
+
+@router.get("/console/showdown", response_class=HTMLResponse)
+async def showdown_view(request: Request):
+    return TEMPLATES.TemplateResponse(request, "showdown.html",
+        _ctx("showdown", {}))
 
 
 @router.get("/console/chat", response_class=HTMLResponse)

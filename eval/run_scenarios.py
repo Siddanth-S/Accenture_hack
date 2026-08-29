@@ -17,11 +17,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from preflight.embeddings import load_embedder                # noqa: E402
 from preflight.engine import Engine, InferenceResult          # noqa: E402
 from preflight.policy import load_policy                      # noqa: E402
 from preflight.nli import load_nli                            # noqa: E402
 from preflight.schemas import Action, RequestContext          # noqa: E402
-from preflight.session import SessionStore                    # noqa: E402
+from preflight.session import SessionStore, set_embedder      # noqa: E402
 
 SCENARIOS = ROOT / "data" / "sessions" / "preflight-sessions-v1.jsonl"
 
@@ -67,10 +68,15 @@ async def main() -> None:
     # NLI is opt-in: set PREFLIGHT_NLI_MODEL to run entailment instead of the
     # lexical fallback. Unset -> None -> lexical, so the default run needs no
     # model download and stays reproducible.
+    # Embedder is opt-in the same way: PREFLIGHT_EMBED_MODEL turns retry matching
+    # semantic; unset -> lexical retry matching.
+    set_embedder(load_embedder())
     engine = Engine(policy, SessionStore(), nli=load_nli())
     scenarios = load_scenarios()
 
-    print(f"\n{BOLD}PREFLIGHT — scenario evaluation{RESET}")
+    print(f"\n{BOLD}PreflightBench v1 — stateless guardrail vs session-aware{RESET}")
+    print(f"{DIM}adversarial multi-turn sessions where every individual turn is "
+          f"benign but the trajectory is an attack{RESET}")
     print(f"{DIM}policy {policy.id} @ {policy.version_hash} "
           f"| jurisdiction {policy.jurisdiction}{RESET}\n")
 

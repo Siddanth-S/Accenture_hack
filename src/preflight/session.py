@@ -51,6 +51,46 @@ _STOP = {
 # Two prompts are "the same question" above this token-overlap threshold.
 RETRY_SIMILARITY = 0.55
 
+# The bar for the semantic (embedding-cosine) path. Higher than the lexical
+# Jaccard bar on purpose: cosine over a dense space runs hot — even unrelated
+# same-domain prompts sit around 0.3-0.5 — so "same question" needs to clear a
+# stricter line before it counts as a retry.
+RETRY_SIMILARITY_SEMANTIC = 0.80
+
+
+# Optional pluggable sentence embedder: an object exposing
+# `encode(text) -> list[float]` (L2-normalised). Left unset so the prototype
+# runs with zero model downloads and retry detection uses the lexical path; a
+# deployment installs one via set_embedder() to match paraphrased retries that
+# share no words. See [[embeddings.py]]. Held at module scope, not on
+# SessionState, so the (Redis-pickled) state never has to drag a model with it.
+_EMBEDDER = None
+
+
+def set_embedder(embedder) -> None:
+    """Install an optional sentence embedder for semantic retry matching.
+
+    The embedder must expose `encode(text) -> list[float]`. Passing None
+    restores the lexical fallback.
+    """
+    global _EMBEDDER
+    _EMBEDDER = embedder
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    """Cosine similarity between two vectors, pure-Python so the accumulator
+    stays numpy-free at compare time. Vectors from EmbeddingModel arrive
+    L2-normalised, so this reduces to a dot product, but we normalise defensively
+    in case a caller supplies raw vectors."""
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0.0 or nb == 0.0:
+        return 0.0
+    return dot / (na * nb)
+
 
 def content_tokens(text: str) -> frozenset[str]:
     """Content tokens, crudely stemmed to a 4-character prefix.
@@ -129,10 +169,38 @@ class SessionState:
         self.ungrounded_ledger: dict[str, Claim] = {}
         # canonical fingerprint -> (token set, count)
         self.fingerprints: dict[str, tuple[frozenset[str], int]] = {}
+        # canonical fingerprint -> representative embedding vector, populated
+        # only when a semantic embedder is installed. Kept parallel to
+        # `fingerprints` rather than inside it so old pickled states (which
+        # predate this field) still load; readers guard with getattr.
+        self.fingerprint_vecs: dict[str, list[float]] = {}
         self.total_cost_usd = 0.0
 
-    def _match_fingerprint(self, toks: frozenset[str]) -> str | None:
-        """Find an existing question this one is a reformulation of."""
+    def _match_fingerprint(
+        self, toks: frozenset[str], vec: list[float] | None = None
+    ) -> str | None:
+        """Find an existing question this one is a reformulation of.
+
+        Two paths, same job. When an embedder is installed and produced a
+        vector, we match on cosine over meaning — this catches a paraphrase that
+        shares no words. Otherwise we fall back to lexical token overlap, which
+        catches a re-ask that reuses the wording. The semantic path is strictly
+        an upgrade: it only runs when a vector is present, so the lexical
+        behaviour is unchanged for the default zero-download build.
+        """
+        vecs = getattr(self, "fingerprint_vecs", None)
+        if vec is not None and vecs:
+            best, best_sim = None, 0.0
+            for fp, known_vec in vecs.items():
+                sim = _cosine(vec, known_vec)
+                if sim > best_sim:
+                    best, best_sim = fp, sim
+            if best is not None and best_sim >= RETRY_SIMILARITY_SEMANTIC:
+                return best
+            # No semantic match — fall through to lexical, which may still catch
+            # a literal re-ask (and covers fingerprints stored before the
+            # embedder was installed, which have no vector).
+
         best, best_sim = None, 0.0
         for fp, (known, _) in self.fingerprints.items():
             union = toks | known
@@ -159,9 +227,27 @@ class SessionState:
     ) -> TurnRecord:
         self.last_seen = time.time()
         toks = content_tokens(prompt_text)
-        fp = self._match_fingerprint(toks) or semantic_fingerprint(prompt_text)
+
+        # Semantic path when an embedder is installed; None keeps the lexical
+        # behaviour. A broken embedder must not take down the accumulator, so a
+        # failure degrades to lexical rather than raising.
+        vec = None
+        if _EMBEDDER is not None:
+            try:
+                vec = _EMBEDDER.encode(prompt_text)
+            except Exception:
+                vec = None
+
+        fp = self._match_fingerprint(toks, vec) or semantic_fingerprint(prompt_text)
         known, count = self.fingerprints.get(fp, (toks, 0))
         self.fingerprints[fp] = (known, count + 1)
+        # Store the representative vector for a fingerprint the first time we see
+        # it, so later paraphrases compare against it.
+        if vec is not None:
+            vecs = getattr(self, "fingerprint_vecs", None)
+            if vecs is None:
+                vecs = self.fingerprint_vecs = {}
+            vecs.setdefault(fp, vec)
         self.total_cost_usd += cost_usd
 
         ungrounded = [c.id for c in claims if c.is_problem]
@@ -178,6 +264,7 @@ class SessionState:
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             prompt_fingerprint=fp,
+            prompt_embedding_id=(fp if vec is not None else None),
             ungrounded_claim_ids=ungrounded,
         )
         self.turns.append(rec)

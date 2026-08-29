@@ -8,14 +8,29 @@ jinja2>=3.1
 httpx>=0.27
 python-multipart>=0.0.9
 
-# Production session store (optional — set PREFLIGHT_REDIS_URL to activate;
-# the store degrades to in-memory with a warning if this is absent/unreachable)
+# Production session + turn store (optional — set PREFLIGHT_REDIS_URL to
+# activate BOTH; each degrades to in-memory with a warning if this is
+# absent/unreachable)
 # redis>=5.0
 
-# Optional NLI entailment for groundedness (Stage 2). Set PREFLIGHT_NLI_MODEL
-# to activate; without these the engine uses the documented lexical fallback.
+# Optional NLI entailment for groundedness (Stage 2) AND semantic retry matching
+# in the session accumulator. Set PREFLIGHT_NLI_MODEL and/or
+# PREFLIGHT_EMBED_MODEL to activate; without these the engine uses the
+# documented lexical fallbacks.
 # sentence-transformers>=2.2
 # torch>=2.0
+
+# Optional model-based prompt-injection classifier for the Stage 0 input gate.
+# Set PREFLIGHT_INJECTION_MODEL to activate; blended (max) with the heuristics.
+# Also used by eval/benchmark.py to show the heuristics->+model lift.
+# transformers>=4.40
+
+# Test suite (optional — `pytest tests/` from the repo root)
+# pytest>=8.0
+
+# External benchmark (optional — validate the injection detector against a real
+# public corpus): `python -m eval.fetch_benchmark && python -m eval.benchmark`
+# needs only stdlib to fetch; the +model comparison needs transformers above.
 
 # Stage 3 / further detectors (optional — engine degrades explicitly without them)
 # onnxruntime>=1.17
