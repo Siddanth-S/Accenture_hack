@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -367,6 +368,41 @@ async def _run_scenario(scen: dict) -> dict:
 
     return {"scenario": scen["name"], "label": scen["label"],
             "session_id": sid, "turns": turns_out}
+
+
+# --------------------------------------------------------------------------
+# Auto-seed — so a fresh deploy (Vercel /tmp, Render first boot) shows the demo
+# data in Live / Governance / Queue without anyone hitting /replay by hand. Runs
+# once per process, on the first request, only if the ledger is empty. On
+# serverless each cold start self-seeds its own ledger. Disable with
+# PREFLIGHT_AUTOSEED=0.
+# --------------------------------------------------------------------------
+_seeded = False
+
+
+def _ledger_empty() -> bool:
+    try:
+        n = _ledger._conn.execute("SELECT COUNT(*) FROM ledger").fetchone()[0]
+        return not n
+    except Exception:
+        return True
+
+
+@app.middleware("http")
+async def _autoseed_mw(request: Request, call_next):
+    global _seeded
+    if not _seeded:
+        _seeded = True
+        if os.getenv("PREFLIGHT_AUTOSEED", "1").lower() in ("1", "true", "on", "yes") \
+                and _ledger_empty():
+            try:
+                for s in _load_scenarios():
+                    await _run_scenario(s)
+                print("[preflight] auto-seeded replay scenarios into the ledger",
+                      file=sys.stderr)
+            except Exception as exc:
+                print(f"[preflight] autoseed failed: {exc!r}", file=sys.stderr)
+    return await call_next(request)
 
 
 @app.get("/replay")
