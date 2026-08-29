@@ -1,0 +1,18 @@
+# Render Blueprint — one-click deploy.
+# On https://dashboard.render.com  →  New  →  Blueprint  →  connect this repo.
+# Render builds the Dockerfile, injects $PORT, and gives a public HTTPS URL.
+services:
+  - type: web
+    name: preflight
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Optional: set these in the Render dashboard to enable live model calls.
+      # Left unset, the app runs the lexical fallbacks + cached benchmark (still
+      # a full working demo: Showdown, Live, Governance, Queue all function).
+      - key: UPSTREAM_API_KEY
+        sync: false
+      - key: UPSTREAM_BASE_URL
+        value: https://openrouter.ai/api/v1
