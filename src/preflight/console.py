@@ -17,7 +17,7 @@ from . import state
 
 ROOT    = Path(__file__).resolve().parents[2]
 _policy = load_policy(os.getenv("PREFLIGHT_POLICY", str(ROOT / "policies" / "default.yaml")))
-_ledger = Ledger(ROOT / "data" / "preflight.db")
+_ledger = Ledger(os.getenv("PREFLIGHT_DB", str(ROOT / "data" / "preflight.db")))
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 

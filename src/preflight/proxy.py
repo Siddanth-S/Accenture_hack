@@ -69,7 +69,7 @@ _inj_clf  = load_injection_classifier()  # None unless PREFLIGHT_INJECTION_MODEL
 if _inj_clf is not None:
     set_injection_classifier(_inj_clf)   # blend model into the input injection gate
 _engine   = Engine(_policy, _sessions, nli=_nli)
-_ledger   = Ledger(ROOT / "data" / "preflight.db")
+_ledger   = Ledger(os.getenv("PREFLIGHT_DB", str(ROOT / "data" / "preflight.db")))
 
 UPSTREAM_BASE_URL = os.getenv("UPSTREAM_BASE_URL", "https://openrouter.ai/api/v1")
 UPSTREAM_API_KEY  = os.getenv("UPSTREAM_API_KEY") or os.getenv("API_KEY", "")
