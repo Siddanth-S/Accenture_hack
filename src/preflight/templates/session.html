@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% block title %} — Session{% endblock %}
 
+{% block head %}
+<style>
+  .sess-turn{opacity:0;transform:translateY(24px);transition:transform .8s var(--ease-out),opacity .8s var(--ease-out);}
+  .sess-turn.in{opacity:1;transform:none;}
+  /* thicker, glowing risk bars inside session cards */
+  .sess-turn [style*="height: 4px"]{height:7px !important;border-radius:100px !important;}
+</style>
+{% endblock %}
+
 {% block content %}
 
 {% set ACTION_COLOR = {
@@ -21,41 +30,29 @@
   "cost":         "Cost",
 } %}
 
-<!-- Back link + header -->
-<div style="margin-bottom: 1.25rem;">
-  <a href="/console/live" style="font-size: 0.75rem; color: var(--muted);
-                                  text-decoration: none; letter-spacing: 0.04em;">
-    ← Live
-  </a>
+<!-- Header -->
+<div class="eyebrow" style="margin-bottom:0.8rem;">
+  <a href="/console/live" data-hover style="color:var(--text-2);letter-spacing:0.1em;">← Live</a>
+  <span class="tick"></span> Session trace
 </div>
-
-<div style="display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem;
-            flex-wrap: wrap;">
-  <h1 class="disp" style="font-size: 1rem; font-weight: 700; color: #fff; letter-spacing: 0.06em;">
-    {{ scenario_name }}
-  </h1>
-  <span class="mono" style="font-size: 0.72rem; color: var(--muted);">
-    {{ session_id }}
-  </span>
-  <span style="font-size: 0.68rem; color: var(--dimmer);">
-    {{ turns | length }} turn{% if turns | length != 1 %}s{% endif %}
-  </span>
+<div class="page-head">
+  <div>
+    <h1 data-reveal>{{ scenario_name }}</h1>
+    <div style="display:flex;gap:1rem;align-items:center;margin-top:0.7rem;">
+      <span class="mono" style="font-size:0.72rem;color:var(--cyan);">{{ session_id }}</span>
+      <span class="badge badge-muted">{{ turns | length }} turn{% if turns | length != 1 %}s{% endif %}</span>
+    </div>
+  </div>
   {% if not has_prompts %}
-  <span style="font-size: 0.68rem; color: var(--dimmer); margin-left: auto;">
-    replay this session to see prompt / response text
-  </span>
+  <div class="sub" style="text-align:right;">replay this session to see prompt / response text</div>
   {% endif %}
 </div>
 
-<!-- Session risk timeline (only when there are 2+ turns) -->
+<!-- Session risk trajectory (only when there are 2+ turns) -->
 {% if turns | length > 1 %}
-<div style="background: var(--panel-raised); border: 1px solid var(--border);
-            border-radius: 4px; padding: 0.85rem 1rem; margin-bottom: 1.25rem;">
-  <div class="disp" style="font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em;
-                            text-transform: uppercase; color: var(--muted); margin-bottom: 0.6rem;">
-    Session Risk Trajectory
-  </div>
-  <div id="session-risk-chart" style="height: 140px; width: 100%;"></div>
+<div class="glass" style="padding:1.2rem 1.4rem;margin-bottom:1.6rem;">
+  <div class="section-label" style="margin-bottom:0.7rem;">Session Risk Trajectory</div>
+  <div id="session-risk-chart" style="height: 150px; width: 100%;"></div>
 </div>
 {% endif %}
 
@@ -65,25 +62,27 @@
 {% set is_flagged = t.action in ["escalate", "block"] %}
 {% set is_caution = t.action in ["redact", "regenerate"] %}
 
-<div style="margin-bottom: 1.25rem; border: 1px solid var(--border);
-            border-radius: 5px; overflow: hidden;">
+<div class="card sess-turn" style="margin-bottom: 1.1rem; border-radius: 16px; overflow: hidden;">
 
   <!-- Turn header bar -->
-  <div style="background: var(--panel-raised); padding: 0.6rem 1rem;
+  <div style="background: linear-gradient(90deg, {{ ac }}18, transparent 55%);
+              padding: 0.8rem 1.2rem; border-left: 3px solid {{ ac }};
               display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
               border-bottom: 1px solid var(--border);">
 
     <!-- Turn badge -->
-    <span class="disp mono" style="font-size: 0.72rem; font-weight: 700;
-                                    background: var(--panel); padding: 0.2rem 0.55rem;
-                                    border-radius: 3px; color: #8891A0; letter-spacing: 0.05em;">
+    <span class="mono" style="font-size: 0.72rem; font-weight: 600;
+                              background: rgba(255,255,255,0.05); padding: 0.28rem 0.7rem;
+                              border-radius: 100px; color: var(--text-2); letter-spacing: 0.05em;
+                              border: 1px solid var(--border);">
       T{{ t.turn }}
     </span>
 
     <!-- Action badge -->
-    <span class="disp" style="font-size: 0.72rem; font-weight: 700;
-                               letter-spacing: 0.08em; text-transform: uppercase;
-                               color: {{ ac }};">
+    <span class="act-badge" style="color: {{ ac }}; border:1px solid {{ ac }}55;
+      background:{{ ac }}18; padding:0.28rem 0.7rem; border-radius:100px;
+      font-family:'Space Grotesk'; font-weight:700; font-size:0.68rem;
+      letter-spacing:0.06em; text-transform:uppercase;">
       {{ t.action }}
     </span>
 
@@ -286,11 +285,23 @@
 {% endfor %}
 
 {% if not turns %}
-<div style="padding: 3rem 0; text-align: center; color: var(--dimmer); font-size: 0.82rem;
-            border: 1px dashed var(--border); border-radius: 4px;">
+<div class="glass" style="padding: 3.5rem 0; text-align: center; color: var(--text-2); font-size: 0.9rem;">
   No decisions recorded for this session.
 </div>
 {% endif %}
+
+<script>
+  // Cascade the turn cards in as they enter the viewport.
+  (function(){
+    var io = new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.sess-turn').forEach(function(el,i){
+      el.style.transitionDelay = (Math.min(i,6)*0.05)+'s';
+      io.observe(el);
+    });
+  })();
+</script>
 
 {% endblock %}
 
@@ -301,10 +312,10 @@
 (function () {
   var turnLabels = {{ turns | map(attribute='turn') | list | tojson }};
   var signals = [
-    { name: 'Escalation gradient', color: '#D2452F', key: 'escalation_gradient' },
-    { name: 'Contamination',       color: '#E0A32E', key: 'contamination' },
-    { name: 'Retry burn',          color: '#6C8EBF', key: 'retry_burn' },
-    { name: 'Cost creep',          color: '#4FA88B', key: 'cost_creep' },
+    { name: 'Escalation gradient', color: '#FF5A6E', key: 'escalation_gradient' },
+    { name: 'Contamination',       color: '#FFB84D', key: 'contamination' },
+    { name: 'Retry burn',          color: '#46E4FF', key: 'retry_burn' },
+    { name: 'Cost creep',          color: '#7A5CFF', key: 'cost_creep' },
   ];
   var rawData = {{ turns | map(attribute='session_risk') | list | tojson }};
 
@@ -314,18 +325,17 @@
       type: 'line',
       smooth: true,
       symbol: 'circle',
-      symbolSize: 5,
-      lineStyle: { color: sig.color, width: 1.5 },
-      itemStyle: { color: sig.color },
+      symbolSize: 6,
+      lineStyle: { color: sig.color, width: 2.4, shadowColor: sig.color+'88', shadowBlur: 10 },
+      itemStyle: { color: sig.color, borderColor: '#05070F', borderWidth: 2 },
       data: rawData.map(function(sr) { return sr[sig.key] || 0; }),
     };
   });
 
-  var chart = echarts.init(document.getElementById('session-risk-chart'), null,
-                           { renderer: 'svg' });
+  var chart = echarts.init(document.getElementById('session-risk-chart'));
   chart.setOption({
     backgroundColor: 'transparent',
-    animation: false,
+    animationDuration: 1200, animationEasing: 'cubicOut',
     grid: { top: 16, bottom: 28, left: 8, right: 8, containLabel: true },
     legend: {
       data: signals.map(function(s){ return s.name; }),

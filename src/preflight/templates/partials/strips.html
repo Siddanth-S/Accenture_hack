@@ -1,88 +1,61 @@
 {% set ACTION_COLOR = {
-  "pass":               "var(--green)",
-  "pass_with_citations":"var(--green)",
-  "redact":             "var(--amber)",
-  "regenerate":         "var(--amber)",
-  "escalate":           "var(--red)",
-  "block":              "var(--red)",
-} %}
-
-{% set BORDER_COLOR = {
-  0: "var(--green)",
-  1: "var(--amber)",
-  2: "var(--red)",
+  "pass":"var(--green)","pass_with_citations":"var(--green)",
+  "redact":"var(--amber)","regenerate":"var(--amber)",
+  "escalate":"var(--red)","block":"var(--red)",
 } %}
 
 {% if not sessions %}
-<div style="padding: 3rem 0; text-align: center; color: var(--text-3); font-size: 0.78rem;
-            border: 1px dashed var(--border); border-radius: 6px;">
-  No sessions yet.<br>
-  <span style="color: var(--text-2); margin-top: 0.4rem; display: block; font-size:0.72rem;">
-    Send a request to <span class="mono" style="font-size:0.7rem;">POST /v1/chat/completions</span>
-    or use the <a href="/console/chat" style="color:var(--blue);">Chat</a> page.
-  </span>
+<div class="glass" style="padding:3.5rem 2rem;text-align:center;">
+  <div style="font-size:0.9rem;color:var(--text-2);margin-bottom:0.5rem;">No sessions yet.</div>
+  <div style="font-size:0.74rem;color:var(--text-3);">
+    Send a request to <span class="mono" style="color:var(--cyan)">POST /v1/chat/completions</span>
+    or open the <a href="/console/chat" style="color:var(--cyan);border-bottom:1px solid var(--border-2);">Chat</a> tester.
+  </div>
 </div>
 {% endif %}
 
+<div style="display:flex;flex-direction:column;gap:0.55rem;">
 {% for sess in sessions %}
-<a href="/console/session/{{ sess.session_id }}"
-   style="display: block; text-decoration: none; margin-bottom: 4px;">
-  <div style="
-    background: var(--raised);
-    border: 1px solid var(--border);
-    border-left: 3px solid {{ sess.strip_border }};
-    border-radius: 0 6px 6px 0;
-    padding: 0.6rem 0.9rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    min-height: 48px;
-    transition: background 120ms, border-color 120ms;
-  "
-  onmouseover="this.style.background='var(--hover)'; this.style.borderColor='var(--border-2)'; this.style.borderLeftColor='{{ sess.strip_border }}';"
-  onmouseout="this.style.background='var(--raised)'; this.style.borderColor='var(--border)'; this.style.borderLeftColor='{{ sess.strip_border }}';">
+{% set glow = {0:"var(--green)",1:"var(--amber)",2:"var(--red)"}[sess.worst_sev] %}
+<a href="/console/session/{{ sess.session_id }}" data-hover
+   class="card strip-row" style="display:block;">
+  <div style="display:flex;align-items:center;gap:1.25rem;padding:0.9rem 1.25rem;">
 
-    <!-- Session ID + use case -->
-    <div style="min-width: 170px; flex-shrink: 0;">
-      <div class="mono" style="font-size: 0.71rem; color: var(--text); font-weight: 500;">
-        {{ sess.session_id[:22] }}
-      </div>
-      <div class="disp" style="font-size: 0.6rem; color: var(--text-3); text-transform: uppercase;
-                  letter-spacing: 0.08em; margin-top: 2px;">
-        {{ sess.use_case }}
-      </div>
+    <!-- worst-severity spine -->
+    <div style="width:3px;align-self:stretch;border-radius:3px;background:{{ glow }};
+                box-shadow:0 0 12px {{ glow }};flex-shrink:0;"></div>
+
+    <!-- identity -->
+    <div style="min-width:180px;flex-shrink:0;">
+      <div class="mono" style="font-size:0.72rem;color:var(--text);font-weight:500;">{{ sess.session_id[:24] }}</div>
+      <div style="font-size:0.56rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.12em;margin-top:3px;">
+        {{ sess.use_case }}</div>
     </div>
 
-    <!-- Turn dots -->
-    <div style="display: flex; gap: 4px; align-items: center; flex: 1; flex-wrap: wrap;">
+    <!-- turn nodes: a flowing chain -->
+    <div style="display:flex;align-items:center;gap:5px;flex:1;flex-wrap:wrap;">
       {% for t in sess.turns %}
       {% set col = ACTION_COLOR.get(t.action, "var(--text-3)") %}
       <div title="T{{ t.turn }} · {{ t.action }} · {{ t.latency_ms }}ms&#10;{{ t.reason[:80] }}"
-           style="width: 22px; height: 22px; background: {{ col }}; border-radius: 3px;
-                  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-                  opacity: 0.9; cursor: default;">
-        <span class="mono" style="font-size: 0.58rem; color: rgba(0,0,0,0.6); font-weight: 600;">
-          {{ t.turn }}
-        </span>
+           style="width:26px;height:26px;border-radius:8px;flex-shrink:0;position:relative;
+                  display:flex;align-items:center;justify-content:center;
+                  background:linear-gradient(160deg,{{ col }}33,{{ col }}11);
+                  border:1px solid {{ col }};box-shadow:0 0 10px {{ col }}44;">
+        <span class="mono" style="font-size:0.58rem;color:{{ col }};font-weight:600;">{{ t.turn }}</span>
       </div>
+      {% if not loop.last %}
+      <div style="width:10px;height:1px;background:linear-gradient(90deg,{{ col }}66,var(--border));"></div>
+      {% endif %}
       {% endfor %}
     </div>
 
-    <!-- Right: meta -->
-    <div style="flex-shrink: 0; text-align: right; min-width: 80px;">
-      <div class="mono" style="font-size: 0.65rem; color: var(--text-2);">
-        {{ sess.turns | length }} turn{% if sess.turns | length != 1 %}s{% endif %}
-      </div>
-      <div class="mono" style="font-size: 0.6rem; color: var(--text-3);">
-        {{ sess.turns[-1].latency_ms }}ms
-      </div>
+    <!-- meta -->
+    <div style="flex-shrink:0;text-align:right;min-width:74px;">
+      <div class="mono" style="font-size:0.68rem;color:var(--text-2);">{{ sess.turns|length }} turn{% if sess.turns|length != 1 %}s{% endif %}</div>
+      <div class="mono" style="font-size:0.58rem;color:var(--text-3);">{{ sess.turns[-1].latency_ms }}ms</div>
     </div>
-
-    <!-- Chevron -->
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0; opacity:0.3;">
-      <path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-    </svg>
-
+    <span style="color:var(--text-3);font-size:0.9rem;flex-shrink:0;">→</span>
   </div>
 </a>
 {% endfor %}
+</div>

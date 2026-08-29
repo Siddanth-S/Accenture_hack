@@ -3,14 +3,24 @@
 
 {% block head %}
 <style>
+  @keyframes fadeUp { from { opacity:0; transform: translateY(14px); } to { opacity:1; transform:none; } }
+  @keyframes msgIn { 0% { opacity:0; transform: translateY(18px) scale(0.98); }
+                     100% { opacity:1; transform: translateY(0) scale(1); } }
+
   #chat-layout {
-    margin: -1.75rem -1.5rem;
-    height: calc(100vh - 50px);
     display: grid;
-    grid-template-columns: 1fr 420px;
+    grid-template-columns: 1fr 440px;
+    height: calc(100vh - 230px);
+    min-height: 540px;
+    border: 1px solid var(--glass-bd);
+    border-radius: 22px;
+    overflow: hidden;
+    background: linear-gradient(160deg, rgba(12,16,32,0.7), rgba(8,11,22,0.55));
+    backdrop-filter: blur(18px) saturate(1.3);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.45);
   }
   @media (max-width: 900px) {
-    #chat-layout { grid-template-columns: 1fr; }
+    #chat-layout { grid-template-columns: 1fr; height: calc(100vh - 140px); }
     #analysis-col { display: none; }
   }
 
@@ -18,68 +28,80 @@
   #chat-col {
     display: flex; flex-direction: column;
     border-right: 1px solid var(--border);
-    overflow: hidden;
+    overflow: hidden; min-height: 0;
   }
 
   #messages {
-    flex: 1; overflow-y: auto;
-    padding: 1.25rem;
-    display: flex; flex-direction: column; gap: 1rem;
+    flex: 1; overflow-y: auto; min-height: 0;
+    padding: 1.5rem;
+    display: flex; flex-direction: column; gap: 1.15rem;
+    overscroll-behavior: contain;
+    background:
+      radial-gradient(120% 60% at 50% -10%, rgba(61,123,255,0.06), transparent 60%);
   }
 
   /* Scenario strip */
   #scenario-strip {
-    display: flex; gap: 0.5rem; overflow-x: auto;
-    padding: 0.75rem 1.25rem;
+    display: flex; gap: 0.6rem; overflow-x: auto;
+    padding: 1rem 1.25rem;
     border-bottom: 1px solid var(--border);
-    background: var(--surface);
+    background: rgba(8,11,22,0.5);
     flex-shrink: 0;
   }
   #scenario-strip::-webkit-scrollbar { height: 3px; }
 
   .scenario-btn {
     flex-shrink: 0;
-    background: var(--raised);
+    background: linear-gradient(160deg, var(--raised-2), var(--raised));
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.45rem 0.75rem;
-    cursor: pointer;
+    border-radius: 12px;
+    padding: 0.6rem 0.85rem;
+    cursor: none;
     text-align: left;
-    transition: border-color 140ms, background 140ms;
-    min-width: 140px;
+    transition: transform .4s var(--ease-out), border-color .3s, box-shadow .3s;
+    min-width: 150px; position: relative; overflow: hidden;
   }
-  .scenario-btn:hover { background: var(--hover); border-color: var(--border-2); }
-  .scenario-btn.active { border-color: var(--blue); }
+  .scenario-btn:hover { transform: translateY(-3px);
+    border-color: var(--border-2); box-shadow: 0 12px 30px rgba(0,0,0,0.4); }
+  .scenario-btn.active { border-color: var(--blue);
+    box-shadow: 0 0 0 1px var(--blue), 0 0 26px rgba(61,123,255,0.35); }
+  .scenario-btn.active::after { content:""; position:absolute; inset:0;
+    background: linear-gradient(160deg, rgba(61,123,255,0.12), transparent 60%); }
   .scenario-btn .sc-label {
-    font-size: 0.7rem; font-weight: 600; color: var(--text);
-    font-family: 'IBM Plex Sans Condensed', sans-serif;
-    letter-spacing: 0.03em; display: block; margin-bottom: 2px;
+    font-size: 0.72rem; font-weight: 600; color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    letter-spacing: 0.01em; display: block; margin-bottom: 3px; position: relative;
   }
   .scenario-btn .sc-badge {
-    display: inline-block; font-size: 0.58rem; font-weight: 700;
+    display: inline-block; font-size: 0.54rem; font-weight: 700;
     font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.06em;
-    padding: 0.1rem 0.35rem; border-radius: 3px; margin: 2px 0; text-transform: uppercase;
+    padding: 0.12rem 0.4rem; border-radius: 100px; margin: 2px 0; text-transform: uppercase;
+    position: relative;
   }
   .scenario-btn .sc-desc {
-    font-size: 0.6rem; color: var(--text-3); display: block; line-height: 1.3;
+    font-size: 0.58rem; color: var(--text-3); display: block; line-height: 1.35; position: relative;
   }
 
   /* Message bubbles */
-  .msg { display: flex; flex-direction: column; max-width: 85%; animation: fadeUp 0.2s ease; }
+  .msg { display: flex; flex-direction: column; max-width: 84%;
+    animation: msgIn 0.6s cubic-bezier(0.16,1,0.3,1); }
   .msg-user { align-self: flex-end; align-items: flex-end; }
   .msg-assistant { align-self: flex-start; align-items: flex-start; }
   .msg-bubble {
-    padding: 0.75rem 1rem; border-radius: 8px;
-    font-size: 0.82rem; line-height: 1.6;
+    padding: 0.85rem 1.1rem; border-radius: 16px;
+    font-size: 0.83rem; line-height: 1.62;
     white-space: pre-wrap; word-break: break-word;
+    backdrop-filter: blur(8px);
   }
   .msg-user .msg-bubble {
-    background: var(--blue-dim); border: 1px solid rgba(77,127,212,0.3);
-    color: var(--text); border-bottom-right-radius: 2px;
+    background: linear-gradient(140deg, rgba(61,123,255,0.9), rgba(122,92,255,0.85));
+    border: 1px solid rgba(120,160,255,0.4);
+    color: #fff; border-bottom-right-radius: 4px;
+    box-shadow: 0 8px 26px rgba(61,123,255,0.28);
   }
   .msg-assistant .msg-bubble {
-    background: var(--raised); border: 1px solid var(--border);
-    color: var(--text); border-bottom-left-radius: 2px;
+    background: rgba(255,255,255,0.035); border: 1px solid var(--glass-bd);
+    color: var(--text); border-bottom-left-radius: 4px;
   }
   .msg-meta {
     font-size: 0.6rem; color: var(--text-3); margin-top: 0.3rem;
@@ -100,7 +122,7 @@
   /* Input area */
   #input-area {
     border-top: 1px solid var(--border);
-    background: var(--surface);
+    background: rgba(8,11,22,0.6);
     flex-shrink: 0;
   }
   #sources-panel {
@@ -123,11 +145,11 @@
   #input-bar { padding: 0.75rem 1.25rem; }
   #toolbar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
   .toolbar-select {
-    background: var(--raised); border: 1px solid var(--border);
+    background: var(--raised-2); border: 1px solid var(--border);
     color: var(--text-2); font-size: 0.68rem;
     font-family: 'IBM Plex Mono', monospace;
-    padding: 0.25rem 0.45rem; border-radius: 5px;
-    outline: none; cursor: pointer;
+    padding: 0.3rem 0.55rem; border-radius: 100px;
+    outline: none; cursor: none;
   }
   .toolbar-btn {
     background: none; border: 1px solid var(--border);
@@ -140,45 +162,53 @@
   .toolbar-btn.active { border-color: var(--blue); color: var(--blue); }
   #input-row { display: flex; gap: 0.6rem; align-items: flex-end; }
   #msg-input {
-    flex: 1; background: var(--raised);
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 0.65rem 0.9rem; font-size: 0.82rem;
-    font-family: 'IBM Plex Sans', sans-serif;
+    flex: 1; background: rgba(255,255,255,0.03);
+    border: 1px solid var(--glass-bd); border-radius: 14px;
+    padding: 0.8rem 1rem; font-size: 0.84rem;
+    font-family: 'Space Grotesk', sans-serif;
     color: var(--text); resize: none;
-    min-height: 42px; max-height: 140px;
+    min-height: 48px; max-height: 140px;
     overflow-y: auto; line-height: 1.5;
-    outline: none; transition: border-color 150ms;
+    outline: none; transition: border-color .3s, box-shadow .3s;
   }
-  #msg-input:focus { border-color: var(--border-2); }
+  #msg-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(61,123,255,0.14); }
   #msg-input::placeholder { color: var(--text-3); }
   #send-btn {
-    background: var(--blue); color: #fff; border: none;
-    border-radius: 7px; width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--blue), var(--indigo)); color: #fff; border: none;
+    border-radius: 14px; width: 48px; height: 48px;
     display: flex; align-items: center; justify-content: center;
-    cursor: pointer; flex-shrink: 0; transition: opacity 150ms;
+    cursor: none; flex-shrink: 0; transition: transform .4s var(--ease-out), box-shadow .3s;
+    box-shadow: 0 8px 24px rgba(61,123,255,0.4);
   }
-  #send-btn:hover { opacity: 0.85; }
-  #send-btn:disabled { opacity: 0.35; cursor: default; }
+  #send-btn:hover { transform: translateY(-2px) scale(1.05); box-shadow: 0 12px 30px rgba(61,123,255,0.55); }
+  #send-btn:disabled { opacity: 0.35; cursor: default; transform: none; box-shadow: none; }
 
   /* Analysis column */
   #analysis-col {
-    background: var(--surface); display: flex;
-    flex-direction: column; overflow: hidden;
+    background: rgba(6,9,18,0.55); display: flex;
+    flex-direction: column; overflow: hidden; min-height: 0;
   }
   #analysis-header {
-    padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--border);
+    padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0;
+    background: rgba(61,123,255,0.05);
   }
-  #analysis-body { flex: 1; overflow-y: auto; padding: 1.25rem; }
+  #analysis-body { flex: 1; overflow-y: auto; min-height: 0; padding: 1.5rem;
+    overscroll-behavior: contain; }
+  /* Custom slim scrollbars inside the panels */
+  #messages::-webkit-scrollbar, #analysis-body::-webkit-scrollbar { width: 5px; }
+  #messages::-webkit-scrollbar-thumb, #analysis-body::-webkit-scrollbar-thumb {
+    background: linear-gradient(var(--blue), var(--indigo)); border-radius: 6px; }
 
-  .pipeline-steps { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+  .pipeline-steps { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
   .pipe-step {
     display: flex; flex-direction: column; align-items: center;
-    background: var(--raised); border: 1px solid var(--border);
-    border-radius: 6px; padding: 0.3rem 0.55rem; min-width: 52px;
+    background: var(--raised-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.35rem 0.6rem; min-width: 54px;
+    transition: border-color .3s, box-shadow .3s;
   }
-  .pipe-step.active { border-color: rgba(57,184,122,0.5); }
-  .pipe-step.skipped { opacity: 0.4; }
+  .pipe-step.active { border-color: rgba(53,224,192,0.5); box-shadow: 0 0 14px rgba(53,224,192,0.25); }
+  .pipe-step.skipped { opacity: 0.35; }
 
   .decision-banner { border-radius: 8px; padding: 0.85rem 1rem; border: 1px solid; }
   .a-section { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
@@ -194,55 +224,123 @@
   #empty-state {
     height: 100%; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    gap: 0.75rem; color: var(--text-3);
-    text-align: center; padding: 2rem;
+    gap: 0.9rem; color: var(--text-3);
+    text-align: center; padding: 2.5rem;
   }
+
+  /* Scenario chip internals */
+  .sc-top { display:flex; align-items:center; gap:0.5rem; margin-bottom:5px; }
+  .sc-ico { width:26px; height:26px; border-radius:8px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,0.05); border:1px solid var(--glass-bd); }
+  .sc-ico svg { width:15px; height:15px; stroke-linecap:round; stroke-linejoin:round; }
+  .scenario-btn.attack { border-color:rgba(255,90,110,0.45);
+    background:linear-gradient(160deg,rgba(255,90,110,0.12),rgba(255,90,110,0.03)); }
+  .scenario-btn.attack:hover { box-shadow:0 12px 30px rgba(255,90,110,0.25); }
+
+  /* ── Analysis panel: BIGGER, animated ─────────────────────── */
+  #analysis-header { font-size:0.78rem; }
+  #analysis-body { padding:1.5rem; }
+  .a-section { margin-bottom:1.5rem; padding-bottom:1.4rem; opacity:1; }
+  .a-section .section-label { font-size:0.66rem !important; letter-spacing:0.14em; margin-bottom:0.9rem; }
+
+  /* Larger risk rows with room for the info button */
+  #analysis-body .risk-row { gap:0.75rem; margin-bottom:0.85rem; }
+  #analysis-body .risk-label { min-width:132px; font-size:0.78rem; color:var(--text);
+    display:flex; align-items:center; gap:0.4rem; }
+  #analysis-body .risk-track { height:8px; border-radius:100px; background:var(--raised-2); }
+  #analysis-body .risk-fill { border-radius:100px; box-shadow:0 0 12px currentColor; }
+  #analysis-body .risk-value { font-size:0.82rem; min-width:42px; font-weight:600; }
+
+  /* Info button + tooltip */
+  .risk-info { width:16px; height:16px; border-radius:50%; flex-shrink:0;
+    border:1px solid var(--border-2); color:var(--text-2); font-size:0.6rem; font-weight:700;
+    display:inline-flex; align-items:center; justify-content:center; cursor:none;
+    position:relative; transition:background .25s,color .25s,border-color .25s; font-family:'IBM Plex Mono'; }
+  .risk-info:hover { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .risk-info .tip { position:absolute; bottom:150%; left:50%; transform:translateX(-50%) translateY(6px);
+    width:240px; padding:0.7rem 0.85rem; border-radius:12px; z-index:50;
+    background:rgba(12,16,32,0.96); border:1px solid var(--glass-bd);
+    box-shadow:0 20px 50px rgba(0,0,0,0.6); backdrop-filter:blur(14px);
+    font-size:0.7rem; line-height:1.55; color:var(--text-2); text-align:left;
+    letter-spacing:0; text-transform:none; font-weight:400; font-family:'Space Grotesk';
+    opacity:0; pointer-events:none; transition:opacity .3s var(--ease-out), transform .3s var(--ease-out); }
+  .risk-info .tip b { color:var(--cyan); font-weight:600; display:block; margin-bottom:0.2rem; font-size:0.72rem; }
+  .risk-info:hover .tip { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  .finder-row { padding:0.5rem 0 !important; font-size:0.74rem !important; }
+  .finder-name { font-size:0.72rem; }
+  .finder-score { font-size:0.78rem; }
+  .pipe-step { min-width:60px; padding:0.45rem 0.7rem; }
+  .decision-banner { padding:1.1rem 1.2rem !important; border-radius:16px !important; }
 </style>
 {% endblock %}
 
 {% block content %}
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:1.5rem;
+            flex-wrap:wrap;margin-bottom:1.1rem;">
+  <div>
+    <div class="eyebrow"><span class="led"></span> Live tester — drive the real pipeline</div>
+    <h1 class="disp" data-reveal style="font-size:clamp(1.8rem,4vw,3rem);">Chat <span class="accent">console</span></h1>
+  </div>
+  <div style="font-size:0.72rem;color:var(--text-2);max-width:40ch;line-height:1.6;text-align:right;">
+    Pick a scenario or type freely. Every message is scored live — pipeline, risk vector and
+    <b style="color:var(--text)">session trajectory</b> render on the right.
+  </div>
+</div>
+
 <div id="chat-layout">
 
   <!-- ══ Left: Chat ═════════════════════════════════════════════ -->
   <div id="chat-col">
 
     <!-- Scenario strip -->
-    <div id="scenario-strip">
+    <div id="scenario-strip" data-lenis-prevent>
       <button class="scenario-btn" onclick="loadScenario('hallucination')" id="sc-hallucination">
-        <span class="sc-label">🔍 Hallucination catch</span>
-        <span class="sc-badge" style="background:rgba(201,149,48,0.15);color:var(--amber);">REGENERATE</span>
-        <span class="sc-desc">groundedness ~0.68 > threshold 0.60</span>
+        <span class="sc-top"><span class="sc-ico" style="color:var(--amber)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </span><span class="sc-label">Hallucination catch</span></span>
+        <span class="sc-badge" style="background:rgba(255,184,77,0.15);color:var(--amber);">REGENERATE</span>
+        <span class="sc-desc">groundedness ~0.68 &gt; threshold 0.60</span>
       </button>
       <button class="scenario-btn" onclick="loadScenario('lending')" id="sc-lending">
-        <span class="sc-label">⚖️ Lending decision</span>
-        <span class="sc-badge" style="background:rgba(195,59,56,0.15);color:var(--red);">ESCALATE</span>
+        <span class="sc-top"><span class="sc-ico" style="color:var(--red)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M6 7l-3 6h6zM18 7l-3 6h6zM4 21h16"/></svg>
+        </span><span class="sc-label">Lending decision</span></span>
+        <span class="sc-badge" style="background:rgba(255,90,110,0.15);color:var(--red);">ESCALATE</span>
         <span class="sc-desc">same score, stricter policy (0.20)</span>
       </button>
       <button class="scenario-btn" onclick="loadScenario('pii')" id="sc-pii">
-        <span class="sc-label">🔒 PII detection</span>
-        <span class="sc-badge" style="background:rgba(201,149,48,0.15);color:var(--amber);">REDACT</span>
+        <span class="sc-top"><span class="sc-ico" style="color:var(--amber)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        </span><span class="sc-label">PII detection</span></span>
+        <span class="sc-badge" style="background:rgba(255,184,77,0.15);color:var(--amber);">REDACT</span>
         <span class="sc-desc">Luhn-valid card → privacy 1.0</span>
       </button>
       <button class="scenario-btn" onclick="loadScenario('escalation')" id="sc-escalation">
-        <span class="sc-label">📈 Retry escalation</span>
-        <span class="sc-badge" style="background:rgba(195,59,56,0.15);color:var(--red);">ESCALATE @ T4</span>
-        <span class="sc-desc">Jaccard match × 4 → retry_burn 0→0.33→0.55→0.70</span>
+        <span class="sc-top"><span class="sc-ico" style="color:var(--red)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l6-6 4 4 7-8"/><path d="M21 7v5h-5"/></svg>
+        </span><span class="sc-label">Retry escalation</span></span>
+        <span class="sc-badge" style="background:rgba(255,90,110,0.15);color:var(--red);">ESCALATE @ T4</span>
+        <span class="sc-desc">retry_burn 0 → 0.33 → 0.55 → 0.70</span>
       </button>
-      <button class="scenario-btn" onclick="loadScenario('none')" id="sc-none"
-              style="min-width:80px;">
-        <span class="sc-label">Free</span>
-        <span class="sc-desc">No context</span>
+      <button class="scenario-btn" onclick="loadScenario('none')" id="sc-none" style="min-width:120px;">
+        <span class="sc-top"><span class="sc-ico" style="color:var(--text-2)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M4 20l8-8-3-3-8 8v3zM13 6l3 3"/></svg>
+        </span><span class="sc-label">Free type</span></span>
+        <span class="sc-desc">no context — your own prompt</span>
       </button>
-      <button class="scenario-btn" onclick="runAttack('escalation')" id="sc-runattack"
-              style="min-width:150px;border-color:rgba(195,59,56,0.5);
-                     background:rgba(195,59,56,0.08);">
-        <span class="sc-label" style="color:var(--red);">▶ Run attack</span>
-        <span class="sc-desc">auto-fire 4 turns — watch the trajectory climb</span>
+      <button class="scenario-btn attack" onclick="runAttack('escalation')" id="sc-runattack" style="min-width:170px;">
+        <span class="sc-top"><span class="sc-ico" style="color:var(--red)">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M6 4l14 8-14 8z"/></svg>
+        </span><span class="sc-label" style="color:var(--red);">Run attack</span></span>
+        <span class="sc-desc">auto-fire 4 turns — watch it climb</span>
       </button>
     </div>
 
     <!-- Messages -->
-    <div id="messages">
+    <div id="messages" data-lenis-prevent>
       <div id="welcome-msg" style="margin:auto 0; text-align:center; padding:2rem 1rem; color:var(--text-3);">
         <div style="font-size:1.8rem; margin-bottom:0.75rem; opacity:0.25;">✦</div>
         <div class="disp" style="font-size:0.88rem; font-weight:700; color:var(--text);
@@ -331,7 +429,7 @@
             margin-left:auto; font-family:'IBM Plex Mono',monospace;"></span>
     </div>
 
-    <div id="analysis-body">
+    <div id="analysis-body" data-lenis-prevent>
       <div id="empty-state">
         <svg width="36" height="36" viewBox="0 0 36 36" fill="none" opacity="0.25">
           <circle cx="18" cy="18" r="16" stroke="currentColor" stroke-width="1.5"/>
@@ -679,13 +777,40 @@ function makeActionBadge(a, sm) {
   s.textContent = a.replace(/_/g,' '); return s;
 }
 function riskColor(v) { return v>=0.6?'var(--red)':v>=0.3?'var(--amber)':'var(--green)'; }
+
+// Plain-language definition for every risk axis — surfaced via the (i) button.
+const RISK_INFO = {
+  'Groundedness':['Groundedness','Is every claim in the answer actually supported by the retrieved sources? A high score means the model asserted something the evidence does not back.'],
+  'Uncertainty':['Uncertainty','Does the model agree with itself? We sample several answers and cluster them by meaning (semantic entropy). High = confident-sounding but inconsistent.'],
+  'Bias':['Bias','Does the answer move when a protected attribute — name, gender, religion — is swapped? High = the decision changed for a reason it shouldn\'t.'],
+  'Privacy':['Privacy','PII in the prompt or response, or system-prompt / canary leakage. High = sensitive data was exposed.'],
+  'Injection':['Injection','A prompt-injection or jailbreak attempt in the input or a retrieved document. High = someone is trying to override the instructions.'],
+  'Cost':['Cost','Spend for this one response against its budget, plus oversized-model use. High = this call is expensive for what it returns.'],
+  'Escalation grad.':['Escalation gradient','Is the conversation walking toward a policy boundary turn by turn? Each turn can look fine on its own — the SLOPE is the attack.'],
+  'Contamination':['Contamination','Is the model now reasoning FROM an earlier ungrounded claim? A fabrication asserted at turn 2 quietly infecting turn 6.'],
+  'Retry burn':['Retry burn','The same question re-asked many ways — multiplying cost and usually signalling the model is failing at something.'],
+  'Cost creep':['Cost creep','Total session spend vs budget. No single response looks alarming; the running session total does.'],
+};
+
 function riskBar(label, val) {
   const c = riskColor(val), pct = Math.round(val*100);
+  const info = RISK_INFO[label];
+  const btn = info ? `<span class="risk-info" tabindex="0">i<span class="tip"><b>${info[0]}</b>${info[1]}</span></span>` : '';
   return `<div class="risk-row">
-    <span class="risk-label">${label}</span>
-    <div class="risk-track"><div class="risk-fill" style="width:${pct}%;background:${c};"></div></div>
+    <span class="risk-label">${label}${btn}</span>
+    <div class="risk-track"><div class="risk-fill" data-pct="${pct}" style="width:0%;background:${c};color:${c};"></div></div>
     <span class="risk-value" style="color:${c};">${val.toFixed(2)}</span>
   </div>`;
+}
+
+// Smooth reveal: bars fill from 0, sections rise in sequence.
+function animateAnalysis() {
+  const root = document.getElementById('analysis-content');
+  if (!root) return;
+  const fills = root.querySelectorAll('.risk-fill');
+  if (typeof gsap === 'undefined') { fills.forEach(f=>f.style.width=(f.dataset.pct||0)+'%'); return; }
+  gsap.from(root.querySelectorAll('.a-section'), {opacity:0, y:20, duration:0.6, ease:'power3.out', stagger:0.07});
+  fills.forEach((f,i)=>gsap.to(f,{width:(f.dataset.pct||0)+'%', duration:1.0, ease:'power2.out', delay:0.2+i*0.03}));
 }
 
 function showAnalysisLoading(t) {
@@ -694,10 +819,21 @@ function showAnalysisLoading(t) {
   const badge = document.getElementById('analysis-turn-badge');
   badge.style.display = 'inline'; badge.textContent = `T${t}`;
   document.getElementById('analysis-content').innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:0.75rem;opacity:0.4;">
-      ${[90,70,85,55].map((w,i)=>`<div style="height:${12+i*4}px;background:var(--raised);border-radius:4px;
-        width:${w}%;animation:_pulse 1.1s ${i*0.12}s infinite alternate;"></div>`).join('')}
-    </div><style>@keyframes _pulse{from{opacity:.2}to{opacity:.6}}</style>`;
+    <div style="display:flex;align-items:center;gap:0.7rem;margin-bottom:1.6rem;">
+      <span class="an-spin"></span>
+      <span style="font-size:0.85rem;color:var(--text);font-weight:600;">Analyzing turn ${t}…</span>
+      <span style="margin-left:auto;font-size:0.62rem;color:var(--text-3);font-family:'IBM Plex Mono';">6 detectors</span>
+    </div>
+    ${[100,84,92,72,88,64,80].map((w,i)=>`<div class="an-skl" style="width:${w}%;animation-delay:${i*0.11}s;"></div>`).join('')}
+    <style>
+      .an-spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--border-2);
+        border-top-color:var(--cyan);animation:anspin .7s linear infinite;flex-shrink:0;}
+      @keyframes anspin{to{transform:rotate(360deg);}}
+      .an-skl{height:15px;border-radius:100px;margin-bottom:1rem;
+        background:linear-gradient(90deg,var(--raised-2) 25%,rgba(120,150,255,0.16) 50%,var(--raised-2) 75%);
+        background-size:200% 100%;animation:anshim 1.4s linear infinite;}
+      @keyframes anshim{to{background-position:-200% center;}}
+    </style>`;
 }
 
 function renderAnalysis(data, t) {
@@ -744,6 +880,7 @@ function renderAnalysis(data, t) {
   ${buildScenarioNote()}
 
 </div>`;
+  animateAnalysis();
 }
 
 function buildSessionTimeline() {

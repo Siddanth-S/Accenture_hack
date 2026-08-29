@@ -3,63 +3,47 @@
 
 {% block content %}
 
-<div style="display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1.5rem;">
-  <h1 class="disp" style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.14em;
-                           text-transform: uppercase; color: var(--muted);">
-    Governance
-  </h1>
-  <span style="font-size: 0.68rem; color: var(--dimmer);">
-    policy · {{ policy_id }} · jurisdiction {{ jurisdiction }}
-  </span>
+<div class="eyebrow"><span class="tick"></span> Policy {{ policy_id }} · {{ jurisdiction }}</div>
+<div class="page-head">
+  <h1 class="anton" data-reveal>Govern<span class="accent">ance</span></h1>
+  <div class="sub">Declarative, versioned, jurisdiction-aware policy — and the tamper-evident
+    ledger every decision is sealed into.</div>
 </div>
 
 <!-- Summary cards -->
-<div style="display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap;">
-  {% set actions = stats.get("actions", {}) %}
-  {% set total   = stats.records %}
-  {% set flagged = actions.get("escalate", 0) + actions.get("block", 0) %}
-  {% set flag_rate = (flagged / total * 100) | round(1) if total > 0 else 0 %}
-  {% for label, value, sub, color in [
-       ("Total decisions",   total,                   "processed by engine",  "var(--muted)"),
-       ("Flag rate",         flag_rate|string ~ "%",  "escalate + block",     "var(--warning)" if flagged > 0 else "var(--muted)"),
-       ("Avg latency",       stats.avg_latency_ms | round(1)|string ~ " ms", "p50 engine overhead", "var(--muted)"),
-       ("Cost tracked",      "$" ~ stats.total_cost_usd | round(5)|string,   "session-level ledger", "var(--muted)"),
+{% set actions = stats.get("actions", {}) %}
+{% set total   = stats.records %}
+{% set flagged = actions.get("escalate", 0) + actions.get("block", 0) %}
+{% set flag_rate = (flagged / total * 100) | round(1) if total > 0 else 0 %}
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin-bottom:1.4rem;">
+  {% for label, value, sub, col in [
+       ("Total decisions",   total,                                          "processed by the engine",  "var(--cyan)"),
+       ("Flag rate",         flag_rate|string ~ "%",                         "escalate + block",         ("var(--red)" if flagged > 0 else "var(--green)")),
+       ("Avg latency",       stats.avg_latency_ms | round(1)|string ~ "ms",  "p50 engine overhead",      "var(--blue)"),
+       ("Cost tracked",      "$" ~ stats.total_cost_usd | round(5)|string,   "session-level ledger",     "var(--indigo)"),
      ] %}
-  <div style="background: var(--panel-raised); border: 1px solid var(--border);
-              border-radius: 4px; padding: 0.9rem 1.25rem; min-width: 150px;">
-    <div class="mono" style="font-size: 1.4rem; font-weight: 500; color: {{ color }}; line-height: 1;">
-      {{ value }}
-    </div>
-    <div class="disp" style="font-size: 0.68rem; color: var(--muted); letter-spacing: 0.07em;
-                              text-transform: uppercase; margin-top: 4px;">
-      {{ label }}
-    </div>
-    <div style="font-size: 0.65rem; color: var(--dimmer); margin-top: 2px;">{{ sub }}</div>
+  <div class="card" data-tilt data-hover style="padding:1.4rem 1.5rem;">
+    <div style="font-family:'Space Grotesk';font-weight:700;letter-spacing:-0.04em;line-height:0.9;
+         font-size:clamp(2rem,3.4vw,2.8rem);color:{{ col }};text-shadow:0 0 26px {{ col }}55;">{{ value }}</div>
+    <div style="font-size:0.66rem;color:var(--text-3);letter-spacing:0.14em;text-transform:uppercase;margin-top:0.7rem;">{{ label }}</div>
+    <div style="font-size:0.72rem;color:var(--text-2);margin-top:0.3rem;">{{ sub }}</div>
   </div>
   {% endfor %}
 </div>
 
 <!-- Charts row -->
-<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; margin-bottom: 2rem;">
-
-  <!-- Action distribution donut -->
-  <div style="background: var(--panel-raised); border: 1px solid var(--border);
-              border-radius: 4px; padding: 1rem;">
-    <div class="disp" style="font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
-                              text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;">
-      Action Distribution
-    </div>
-    <div id="chart-actions" style="height: 220px;"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:1rem;margin-bottom:1.4rem;">
+  <div class="card" style="padding:1.3rem 1.4rem;">
+    <div class="section-label">Flag rate</div>
+    <div id="chart-gauge" style="height:230px;"></div>
   </div>
-
-  <!-- Latency histogram -->
-  <div style="background: var(--panel-raised); border: 1px solid var(--border);
-              border-radius: 4px; padding: 1rem;">
-    <div class="disp" style="font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
-                              text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;">
-      Latency Distribution (ms) — lexical fallback · no NLI model
-    </div>
-    <div id="chart-latency" style="height: 220px;"></div>
+  <div class="card" style="padding:1.3rem 1.4rem;">
+    <div class="section-label">Action distribution</div>
+    <div id="chart-actions" style="height:230px;"></div>
+  </div>
+  <div class="card" style="padding:1.3rem 1.4rem;">
+    <div class="section-label">Latency distribution (ms)</div>
+    <div id="chart-latency" style="height:230px;"></div>
   </div>
 </div>
 
@@ -120,90 +104,68 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script>
-const CLEARED = "#4FA88B";
-const CAUTION = "#E0A32E";
-const WARNING = "#D2452F";
-const MUTED   = "#555C6B";
-const PANEL   = "#1F2229";
-const TEXT    = "#C8CDD8";
+const BLUE="#3D7BFF", CYAN="#46E4FF", INDIGO="#7A5CFF",
+      GREEN="#35E0C0", AMBER="#FFB84D", RED="#FF5A6E",
+      MUTED="#808AB4", TEXT="#E9EDFF", PANEL="rgba(12,16,32,0.96)";
+const grad=(a,b)=>new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:a},{offset:1,color:b}]);
+const ACTION_COLORS={pass:GREEN,pass_with_citations:GREEN,redact:AMBER,regenerate:"#F0B429",escalate:RED,block:"#c0303e"};
+const tip={backgroundColor:PANEL,borderColor:"rgba(130,160,255,0.2)",
+  textStyle:{color:TEXT,fontFamily:"IBM Plex Mono",fontSize:11},extraCssText:"backdrop-filter:blur(10px);border-radius:10px;"};
 
-const ACTION_COLORS = {
-  pass:               CLEARED,
-  pass_with_citations:CLEARED,
-  redact:             CAUTION,
-  regenerate:         CAUTION,
-  escalate:           WARNING,
-  block:              WARNING,
-};
+// ── Flag-rate gauge ──────────────────────────────────────────────
+const actionsRaw={{ actions_json | safe }};
+const _tot=actionsRaw.reduce((s,d)=>s+d.value,0)||1;
+const _flag=actionsRaw.filter(d=>d.name==="escalate"||d.name==="block").reduce((s,d)=>s+d.value,0);
+const flagRate=+(_flag/_tot*100).toFixed(1);
+const gauge=echarts.init(document.getElementById("chart-gauge"));
+gauge.setOption({backgroundColor:"transparent",
+  series:[{type:"gauge",startAngle:210,endAngle:-30,min:0,max:100,radius:"92%",center:["50%","56%"],
+    progress:{show:true,width:14,roundCap:true,itemStyle:{color:grad(CYAN,BLUE),shadowColor:"rgba(61,123,255,0.6)",shadowBlur:14}},
+    axisLine:{lineStyle:{width:14,color:[[1,"rgba(120,150,255,0.12)"]]}},
+    pointer:{show:true,length:"58%",width:4,itemStyle:{color:CYAN}},
+    anchor:{show:true,size:12,itemStyle:{color:CYAN}},
+    axisTick:{show:false},splitLine:{show:false},
+    axisLabel:{color:MUTED,fontSize:9,distance:14},
+    detail:{valueAnimation:true,formatter:"{value}%",color:TEXT,fontSize:30,fontFamily:"Space Grotesk",fontWeight:700,offsetCenter:[0,"38%"]},
+    data:[{value:flagRate}],
+    animationDuration:1600,animationEasing:"cubicOut"}]});
 
-// ── Donut chart ─────────────────────────────────────────────────
-const actionsRaw = {{ actions_json | safe }};
-const donut = echarts.init(document.getElementById("chart-actions"), null,
-                           { renderer: "svg" });
-donut.setOption({
-  backgroundColor: "transparent",
-  tooltip: {
-    trigger: "item",
-    formatter: "{b}: {c} ({d}%)",
-    backgroundColor: PANEL,
-    borderColor: "#2A2D35",
-    textStyle: { color: TEXT, fontFamily: "IBM Plex Mono", fontSize: 11 },
-  },
-  legend: {
-    orient: "vertical", right: "5%", top: "center",
-    textStyle: { color: TEXT, fontSize: 11, fontFamily: "IBM Plex Sans" },
-    itemWidth: 10, itemHeight: 10,
-  },
-  series: [{
-    type: "pie", radius: ["42%", "68%"],
-    center: ["38%", "50%"],
-    label: { show: false },
-    data: actionsRaw.map(d => ({
-      name: d.name,
-      value: d.value,
-      itemStyle: { color: ACTION_COLORS[d.name] || MUTED },
-    })),
-    emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" } },
-  }],
-});
+// ── Action donut ─────────────────────────────────────────────────
+const donut=echarts.init(document.getElementById("chart-actions"));
+donut.setOption({backgroundColor:"transparent",
+  tooltip:{trigger:"item",formatter:"{b}: {c} ({d}%)",...tip},
+  legend:{orient:"vertical",right:"2%",top:"center",icon:"circle",
+    textStyle:{color:MUTED,fontSize:11,fontFamily:"Space Grotesk"},itemWidth:9,itemHeight:9,itemGap:9},
+  series:[{type:"pie",radius:["52%","74%"],center:["36%","52%"],
+    label:{show:true,position:"center",formatter:"{total|"+actionsRaw.reduce((s,d)=>s+d.value,0)+"}\n{sub|decisions}",
+      rich:{total:{color:TEXT,fontSize:26,fontFamily:"Space Grotesk",fontWeight:700},
+            sub:{color:MUTED,fontSize:10,padding:[4,0,0,0]}}},
+    labelLine:{show:false},padAngle:3,itemStyle:{borderRadius:8},
+    data:actionsRaw.map(d=>({name:d.name,value:d.value,
+      itemStyle:{color:grad(ACTION_COLORS[d.name]||MUTED,(ACTION_COLORS[d.name]||MUTED)+"99"),
+        shadowBlur:12,shadowColor:(ACTION_COLORS[d.name]||MUTED)+"55"}})),
+    emphasis:{scaleSize:6,itemStyle:{shadowBlur:20}},
+    animationType:"scale",animationEasing:"elasticOut",animationDuration:900}]});
 
-// ── Latency bar ──────────────────────────────────────────────────
-const latBuckets = {{ lat_buckets_json | safe }};
-const latLabels  = {{ lat_labels_json | safe }};
-const latChart   = echarts.init(document.getElementById("chart-latency"), null,
-                                { renderer: "svg" });
-latChart.setOption({
-  backgroundColor: "transparent",
-  grid: { left: 40, right: 20, top: 10, bottom: 28 },
-  tooltip: {
-    trigger: "axis",
-    backgroundColor: PANEL, borderColor: "#2A2D35",
-    textStyle: { color: TEXT, fontFamily: "IBM Plex Mono", fontSize: 11 },
-    formatter: params =>
-      `${params[0].name} ms<br>${params[0].value} request${params[0].value !== 1 ? "s" : ""}`,
-  },
-  xAxis: {
-    type: "category", data: latLabels,
-    axisLabel: { color: MUTED, fontSize: 10, fontFamily: "IBM Plex Mono" },
-    axisLine: { lineStyle: { color: "#2A2D35" } },
-    splitLine: { show: false },
-  },
-  yAxis: {
-    type: "value", minInterval: 1,
-    axisLabel: { color: MUTED, fontSize: 10, fontFamily: "IBM Plex Mono" },
-    axisLine: { show: false },
-    splitLine: { lineStyle: { color: "#2A2D35", type: "dashed" } },
-  },
-  series: [{
-    type: "bar", data: latBuckets,
-    itemStyle: { color: CLEARED, borderRadius: [2, 2, 0, 0] },
-    emphasis: { itemStyle: { color: "#5FC89B" } },
-    barMaxWidth: 36,
-  }],
-});
+// ── Latency area ─────────────────────────────────────────────────
+const latBuckets={{ lat_buckets_json | safe }}, latLabels={{ lat_labels_json | safe }};
+const latChart=echarts.init(document.getElementById("chart-latency"));
+latChart.setOption({backgroundColor:"transparent",
+  grid:{left:34,right:16,top:16,bottom:26},
+  tooltip:{trigger:"axis",...tip,
+    formatter:p=>`${p[0].name} ms<br><b style="color:${CYAN}">${p[0].value}</b> request${p[0].value!==1?"s":""}`},
+  xAxis:{type:"category",data:latLabels,boundaryGap:false,
+    axisLabel:{color:MUTED,fontSize:9,fontFamily:"IBM Plex Mono"},
+    axisLine:{lineStyle:{color:"rgba(120,150,255,0.15)"}},axisTick:{show:false}},
+  yAxis:{type:"value",minInterval:1,
+    axisLabel:{color:MUTED,fontSize:9,fontFamily:"IBM Plex Mono"},axisLine:{show:false},
+    splitLine:{lineStyle:{color:"rgba(120,150,255,0.08)"}}},
+  series:[{type:"line",data:latBuckets,smooth:true,symbol:"circle",symbolSize:6,
+    lineStyle:{width:2.5,color:grad(CYAN,BLUE),shadowColor:"rgba(61,123,255,0.5)",shadowBlur:12},
+    itemStyle:{color:CYAN,borderColor:"#0C1020",borderWidth:2},
+    areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:"rgba(61,123,255,0.4)"},{offset:1,color:"rgba(61,123,255,0.01)"}])},
+    animationDuration:1400,animationEasing:"cubicOut"}]});
 
-window.addEventListener("resize", () => {
-  donut.resize(); latChart.resize();
-});
+addEventListener("resize",()=>{gauge.resize();donut.resize();latChart.resize();});
 </script>
 {% endblock %}

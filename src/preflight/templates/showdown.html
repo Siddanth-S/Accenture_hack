@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+{% block title %} · Showdown{% endblock %}
+
+{% block head %}
+<style>
+  .sd-hero { margin-bottom: 2rem; }
+  .sd-hero h1 { font-family:'Space Grotesk'; font-weight:700; font-size:clamp(2.4rem,5.5vw,4.6rem);
+                letter-spacing:-0.045em; color:var(--text); line-height:0.95; }
+  .sd-hero h1 .g { background:linear-gradient(120deg,var(--cyan),var(--blue) 50%,var(--indigo));
+    -webkit-background-clip:text;background-clip:text;color:transparent;background-size:200% auto;animation:shimmer 6s linear infinite;}
+  .sd-hero p { color:var(--text-2); font-size:0.95rem; max-width:72ch; margin-top:1rem; line-height:1.7; }
+
+  .sd-bench { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-bottom:1.6rem; }
+  .sd-bench-cell { padding:1.6rem 1.5rem; border-radius:18px;
+    background:linear-gradient(160deg,var(--raised),var(--surface)); border:1px solid var(--border);
+    position:relative; overflow:hidden; }
+  .sd-bench-cell .k { font-size:0.6rem; text-transform:uppercase; letter-spacing:0.14em;
+                      color:var(--text-3); font-weight:700; }
+  .sd-bench-cell .v { font-family:'Space Grotesk'; font-size:clamp(2.2rem,4vw,3.4rem); font-weight:700;
+                      margin-top:0.5rem; letter-spacing:-0.04em; line-height:0.9; }
+  .sd-bench-cell .sub { font-size:0.7rem; color:var(--text-2); margin-top:0.5rem; }
+
+  .sd-pickers { display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:1rem; }
+  .sd-chip { border:1px solid var(--border-2); background:var(--raised); color:var(--text-2);
+             border-radius:6px; padding:0.4rem 0.7rem; cursor:pointer; font-size:0.72rem;
+             transition:all 140ms; font-family:'IBM Plex Sans'; }
+  .sd-chip:hover { background:var(--hover); color:var(--text); }
+  .sd-chip.active { background:var(--active); color:var(--text); border-color:var(--blue); }
+  .sd-chip .tag { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.06em;
+                  color:var(--text-3); margin-left:0.4rem; }
+
+  .sd-run { background:var(--blue); color:#fff; border:none; border-radius:6px;
+            padding:0.55rem 1.4rem; font-weight:600; font-size:0.8rem; cursor:pointer;
+            font-family:'IBM Plex Sans Condensed'; letter-spacing:0.04em; text-transform:uppercase; }
+  .sd-run:disabled { opacity:0.5; cursor:default; }
+
+  .sd-note { color:var(--text-2); font-size:0.78rem; margin:0.8rem 0 1.1rem; font-style:italic; }
+
+  .sd-cols { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  .sd-col { border:1px solid var(--border); border-radius:8px; background:var(--surface); overflow:hidden; }
+  .sd-col-head { padding:0.7rem 0.95rem; border-bottom:1px solid var(--border);
+                 display:flex; align-items:center; justify-content:space-between; }
+  .sd-col-head .name { font-family:'IBM Plex Sans Condensed'; font-weight:700; font-size:0.82rem; }
+  .sd-col-head .kind { font-size:0.62rem; color:var(--text-3); text-transform:uppercase; letter-spacing:0.08em; }
+  .sd-col.win { border-color:var(--green); }
+  .sd-col.lose { border-color:var(--red); }
+
+  .sd-turn { padding:0.65rem 0.95rem; border-bottom:1px solid var(--border); animation:fadeUp 0.25s ease forwards; }
+  .sd-turn:last-child { border-bottom:none; }
+  .sd-turn .top { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; }
+  .sd-turn .tn { font-size:0.62rem; color:var(--text-3); font-family:'IBM Plex Mono'; }
+  .sd-turn .prompt { font-size:0.75rem; color:var(--text-2); margin-top:0.35rem; line-height:1.45; }
+  .sd-turn .reason { font-size:0.66rem; color:var(--text-3); margin-top:0.3rem; font-family:'IBM Plex Mono'; }
+  .sd-turn.only { background:rgba(77,127,212,0.06); }
+  .sd-only-tag { font-size:0.56rem; color:var(--blue); text-transform:uppercase; letter-spacing:0.06em;
+                 font-weight:700; margin-top:0.3rem; }
+
+  .sd-verdict { margin-top:1.2rem; border-radius:8px; padding:1rem 1.2rem;
+                border:1px solid var(--border-2); background:var(--raised); }
+  .sd-verdict .line { font-family:'IBM Plex Sans Condensed'; font-size:1.05rem; font-weight:700; }
+
+  .sd-panels { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:1rem; }
+  .sd-panel { border:1px solid var(--border); border-radius:8px; background:var(--surface); padding:0.9rem 1.1rem; }
+  .sd-panel h3 { font-size:0.6rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-3);
+                 font-weight:700; margin-bottom:0.55rem; font-family:'IBM Plex Sans Condensed'; }
+  .sd-panel .row { display:flex; justify-content:space-between; font-size:0.74rem; padding:0.2rem 0;
+                   color:var(--text-2); }
+  .sd-panel .row b { color:var(--text); font-family:'IBM Plex Mono'; }
+  .sd-panel .deg { font-size:0.68rem; color:var(--amber); font-family:'IBM Plex Mono'; padding:0.15rem 0; }
+
+  .sd-cta { margin-top:1.2rem; border:1px dashed var(--border-2); border-radius:8px;
+            padding:1rem 1.2rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+  .sd-cta .t { font-size:0.82rem; color:var(--text); font-weight:600; }
+  .sd-cta .d { font-size:0.72rem; color:var(--text-2); margin-top:0.15rem; }
+  .sd-cta a { background:var(--active); color:var(--text); border-radius:6px; padding:0.5rem 1rem;
+              font-size:0.74rem; font-weight:600; white-space:nowrap; }
+  .hidden { display:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sd-hero">
+  <div class="eyebrow"><span class="led"></span> The proof · stateless vs session-aware</div>
+  <h1 data-reveal>The same attack, <span class="g">scored two ways.</span></h1>
+  <p>Every scenario below is an attack where <b>each individual turn is benign</b>. A stateless
+     guardrail — which is what every guardrail library actually is — passes them one at a time and
+     never sees the attack being assembled. We prove it by running the identical engine twice: once
+     with Preflight's session accumulator switched off (a stateless checker), once with it on.</p>
+</div>
+
+<!-- PreflightBench aggregate -->
+<div class="sd-bench" id="bench">
+  <div class="sd-bench-cell"><div class="k">PreflightBench v1</div>
+    <div class="v" style="color:var(--text)" id="bench-n">—</div>
+    <div class="sub">adversarial multi-turn sessions</div></div>
+  <div class="sd-bench-cell"><div class="k">Stateless guardrail</div>
+    <div class="v" style="color:var(--red)" id="bench-sl">—</div>
+    <div class="sub" id="bench-sl-sub">detection rate</div></div>
+  <div class="sd-bench-cell"><div class="k">Preflight (session-aware)</div>
+    <div class="v" style="color:var(--green)" id="bench-se">—</div>
+    <div class="sub" id="bench-se-sub">detection rate</div></div>
+  <div class="sd-bench-cell"><div class="k">Caught ONLY by session state</div>
+    <div class="v" style="color:var(--blue)" id="bench-only">—</div>
+    <div class="sub">turns invisible to any stateless gate</div></div>
+</div>
+
+<!-- External validation card -->
+<div id="ext" class="hidden" style="border:1px solid var(--border);border-radius:8px;
+     background:var(--surface);padding:0.95rem 1.15rem;margin-bottom:1.4rem;">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+    <div class="section-label" style="margin:0;">External validation — a corpus we did NOT write</div>
+    <span class="mono" id="ext-prov" style="font-size:0.62rem;color:var(--text-3);"></span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);
+       border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:0.6rem;">
+    <div style="background:var(--surface);padding:0.7rem 0.9rem;">
+      <div class="sd-bench-cell" style="padding:0;"><div class="k">Recall (attacks caught)</div>
+        <div class="v" style="font-size:1.25rem;"><span id="ext-r0" style="color:var(--red)"></span>
+          <span style="color:var(--text-3);font-size:0.9rem;">→</span>
+          <span id="ext-r1" style="color:var(--green)"></span></div>
+        <div class="sub">heuristics → +trained classifier</div></div>
+    </div>
+    <div style="background:var(--surface);padding:0.7rem 0.9rem;">
+      <div class="sd-bench-cell" style="padding:0;"><div class="k">ROC-AUC</div>
+        <div class="v" style="font-size:1.25rem;"><span id="ext-a0" style="color:var(--red)"></span>
+          <span style="color:var(--text-3);font-size:0.9rem;">→</span>
+          <span id="ext-a1" style="color:var(--green)"></span></div>
+        <div class="sub">threshold-independent separation</div></div>
+    </div>
+    <div style="background:var(--surface);padding:0.7rem 0.9rem;">
+      <div class="sd-bench-cell" style="padding:0;"><div class="k">False-positive rate</div>
+        <div class="v" style="font-size:1.25rem;color:var(--green)" id="ext-fpr"></div>
+        <div class="sub" id="ext-n"></div></div>
+    </div>
+  </div>
+  <div style="font-size:0.72rem;color:var(--text-2);margin-top:0.6rem;">
+    We ran the <b>real</b> injection detector over an independent public benchmark. Heuristics alone are
+    precise but narrow; the pluggable classifier the architecture already exposes closes most of the gap —
+    measured on data we didn't author, false positives kept near zero.
+  </div>
+</div>
+
+<!-- Scenario picker -->
+<div class="section-label">Choose an attack</div>
+<div class="sd-pickers" id="pickers"></div>
+<button class="sd-run" id="run">▶ Run showdown</button>
+<div class="sd-note" id="scen-note"></div>
+
+<!-- Trajectory chart -->
+<div id="chart-wrap" class="hidden" style="margin:0.4rem 0 1.1rem;">
+  <div class="section-label">Session-risk trajectory — the attack, made visible</div>
+  <div id="chart"></div>
+</div>
+
+<!-- Two columns -->
+<div class="sd-cols hidden" id="cols">
+  <div class="sd-col" id="col-sl">
+    <div class="sd-col-head">
+      <span class="name">Stateless guardrail</span>
+      <span class="kind">industry standard · single-response</span>
+    </div>
+    <div id="turns-sl"></div>
+  </div>
+  <div class="sd-col" id="col-se">
+    <div class="sd-col-head">
+      <span class="name">Preflight</span>
+      <span class="kind">session-aware accumulator</span>
+    </div>
+    <div id="turns-se"></div>
+  </div>
+</div>
+
+<!-- Verdict -->
+<div class="sd-verdict hidden" id="verdict"></div>
+
+<!-- Honest degradation + economics -->
+<div class="sd-panels hidden" id="panels">
+  <div class="sd-panel">
+    <h3>Honest degradation — what it could NOT check</h3>
+    <div id="degraded"></div>
+  </div>
+  <div class="sd-panel">
+    <h3>The invoice line nobody sees until month-end</h3>
+    <div id="economics"></div>
+  </div>
+</div>
+
+<!-- Red-team CTA -->
+<div class="sd-cta">
+  <div>
+    <div class="t">Don't trust the script? Attack it yourself.</div>
+    <div class="d">Open the live chat tester and try to walk it past the boundary turn by turn.</div>
+  </div>
+  <a href="/console/chat">Red-team it live →</a>
+</div>
+
+<script>
+const ACT_CLASS = { pass:'badge-green', pass_with_citations:'badge-green',
+  redact:'badge-amber', regenerate:'badge-amber', escalate:'badge-red', block:'badge-red' };
+const INTERVENED = new Set(['redact','regenerate','escalate','block']);
+let scenarios = [], current = null;
+
+function badge(action){
+  const cls = ACT_CLASS[action] || 'badge-muted';
+  const label = action==='pass' ? 'PASS ✓' : action.replace(/_/g,' ').toUpperCase();
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+// Spring count-up for a number cell (with optional % suffix).
+function animNum(id, end, suffix){
+  const el = document.getElementById(id); if(!el) return;
+  if(typeof gsap==='undefined'){ el.textContent = end+(suffix||''); return; }
+  const o={v:0};
+  gsap.to(o,{v:end,duration:1.6,ease:'power2.out',onUpdate:()=>el.textContent=Math.round(o.v)+(suffix||'')});
+}
+async function loadBench(){
+  const b = await (await fetch('/api/benchmark')).json();
+  animNum('bench-n', b.n_scenarios, '');
+  animNum('bench-sl', Math.round(b.stateless.detection_rate*100), '%');
+  animNum('bench-se', Math.round(b.session_aware.detection_rate*100), '%');
+  animNum('bench-only', b.session_only_turns, '');
+  document.getElementById('bench-sl-sub').textContent = `${b.stateless.caught}/${b.n_unsafe} caught · ${b.stateless.false_positives} FP`;
+  document.getElementById('bench-se-sub').textContent = `${b.session_aware.caught}/${b.n_unsafe} caught · ${b.session_aware.false_positives} FP`;
+  // Staggered entrance for the bench cells.
+  if(typeof gsap!=='undefined')
+    gsap.from('#bench .sd-bench-cell',{opacity:0,y:26,duration:0.7,ease:'power3.out',stagger:0.08});
+}
+
+async function loadScenarios(){
+  const r = await (await fetch('/api/scenarios')).json();
+  scenarios = r.scenarios;
+  const wrap = document.getElementById('pickers');
+  wrap.innerHTML = scenarios.map((s,i) =>
+    `<div class="sd-chip ${i===0?'active':''}" data-slug="${s.slug}">
+       ${s.name}<span class="tag">${s.is_unsafe?s.label:'benign'}</span>
+     </div>`).join('');
+  wrap.querySelectorAll('.sd-chip').forEach(c => c.onclick = () => {
+    wrap.querySelectorAll('.sd-chip').forEach(x=>x.classList.remove('active'));
+    c.classList.add('active'); current = c.dataset.slug;
+    document.getElementById('scen-note').textContent =
+      (scenarios.find(s=>s.slug===current)||{}).note || '';
+  });
+  current = scenarios[0].slug;
+  document.getElementById('scen-note').textContent = scenarios[0].note || '';
+}
+
+function chart(turns, unsafeFrom){
+  const W=760, HT=150, PADL=34, PADR=14, PADT=14, PADB=26;
+  const n = turns.length;
+  const xs = i => PADL + (n<=1?0:(i/(n-1))*(W-PADL-PADR));
+  const ys = v => PADT + (1-v)*(HT-PADT-PADB);
+  const pts = turns.map((t,i)=>`${xs(i)},${ys(t.session.peak)}`).join(' ');
+  const dots = turns.map((t,i)=>{
+    const esc = INTERVENED.has(t.session.action);
+    const col = esc?'var(--red)':(t.session.peak>=0.3?'var(--amber)':'var(--green)');
+    return `<circle cx="${xs(i)}" cy="${ys(t.session.peak)}" r="${esc?4.5:3}" fill="${col}"/>`+
+      (esc?`<text x="${xs(i)}" y="${ys(t.session.peak)-9}" fill="var(--red)" font-size="8"
+             text-anchor="middle" font-family="IBM Plex Mono">${t.session.action.toUpperCase()}</text>`:'');
+  }).join('');
+  const grid = [0,0.25,0.5,0.75,1].map(v=>
+    `<line x1="${PADL}" y1="${ys(v)}" x2="${W-PADR}" y2="${ys(v)}" stroke="var(--border)" stroke-width="1"/>
+     <text x="${PADL-6}" y="${ys(v)+3}" fill="var(--text-3)" font-size="8" text-anchor="end" font-family="IBM Plex Mono">${v.toFixed(2)}</text>`).join('');
+  const xlabels = turns.map((t,i)=>`<text x="${xs(i)}" y="${HT-8}" fill="var(--text-3)" font-size="8"
+       text-anchor="middle" font-family="IBM Plex Mono">T${t.turn}</text>`).join('');
+  let unsafeMark = '';
+  if (unsafeFrom){
+    const idx = turns.findIndex(t=>t.turn===unsafeFrom);
+    if (idx>=0) unsafeMark = `<line x1="${xs(idx)}" y1="${PADT}" x2="${xs(idx)}" y2="${HT-PADB}"
+      stroke="var(--red)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>
+      <text x="${xs(idx)+3}" y="${PADT+8}" fill="var(--red)" font-size="7.5" font-family="IBM Plex Mono">becomes unsafe</text>`;
+  }
+  document.getElementById('chart').innerHTML =
+    `<svg viewBox="0 0 ${W} ${HT}" width="100%" style="display:block;">
+       ${grid}${unsafeMark}
+       <polyline points="${pts}" fill="none" stroke="var(--blue)" stroke-width="2"/>
+       ${dots}${xlabels}
+     </svg>
+     <div style="font-size:0.66rem;color:var(--text-3);margin-top:0.2rem;">
+       peak session risk per turn (max of the four trajectory signals)</div>`;
+}
+
+function turnRow(t, side){
+  const d = t[side];
+  const only = side==='session' && t.session_only;
+  return `<div class="sd-turn ${only?'only':''}">
+    <div class="top"><span class="tn">TURN ${t.turn}</span>${badge(d.action)}</div>
+    <div class="prompt">${escapeHtml(t.prompt.slice(0,150))}${t.prompt.length>150?'…':''}</div>
+    ${INTERVENED.has(d.action)&&d.reason?`<div class="reason">${escapeHtml(d.reason.slice(0,120))}</div>`:''}
+    ${only?`<div class="sd-only-tag">↑ caught ONLY by session state — invisible to the stateless gate</div>`:''}
+  </div>`;
+}
+
+function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+async function run(){
+  const btn = document.getElementById('run');
+  btn.disabled = true; btn.textContent = 'Running…';
+  const data = await (await fetch(`/api/showdown/${current}`)).json();
+
+  ['chart-wrap','cols','verdict','panels'].forEach(id=>document.getElementById(id).classList.remove('hidden'));
+
+  document.getElementById('turns-sl').innerHTML = data.turns.map(t=>turnRow(t,'stateless')).join('');
+  document.getElementById('turns-se').innerHTML = data.turns.map(t=>turnRow(t,'session')).join('');
+  chart(data.turns, data.unsafe_from_turn);
+
+  // Physics-based reveal: the two columns rise, their turn rows cascade in — the
+  // stateless side passing, the session side climbing to its escalate.
+  if(typeof gsap!=='undefined'){
+    gsap.from('#cols .sd-col',{opacity:0,y:30,duration:0.7,ease:'power3.out',stagger:0.12});
+    gsap.from('#turns-sl .sd-turn',{opacity:0,x:-18,duration:0.5,ease:'power2.out',stagger:0.09,delay:0.25});
+    gsap.from('#turns-se .sd-turn',{opacity:0,x:18,duration:0.5,ease:'back.out(1.4)',stagger:0.12,delay:0.35});
+    gsap.from('#verdict',{opacity:0,y:20,duration:0.6,ease:'power3.out',delay:0.5+data.turns.length*0.12});
+  }
+
+  // Colour the winning/losing column.
+  const slCol = document.getElementById('col-sl'), seCol = document.getElementById('col-se');
+  slCol.className = 'sd-col'; seCol.className = 'sd-col';
+  if (data.is_unsafe){
+    seCol.classList.add(data.verdict.session_caught?'win':'lose');
+    slCol.classList.add(data.verdict.stateless_caught?'win':'lose');
+  }
+
+  // Verdict line.
+  const v = data.verdict, el = document.getElementById('verdict');
+  if (data.is_unsafe){
+    const slTxt = v.stateless_caught
+      ? `<span style="color:var(--green)">caught it</span>`
+      : `<span style="color:var(--red)">PASSED the attack ✗</span>`;
+    const seTxt = v.session_caught
+      ? `<span style="color:var(--green)">intervened in time ✓</span>`
+      : `<span style="color:var(--red)">missed it</span>`;
+    el.innerHTML = `<div class="line">Stateless guardrail ${slTxt} · Preflight ${seTxt}</div>
+      <div style="color:var(--text-2);font-size:0.78rem;margin-top:0.3rem;">
+        ${v.session_only_turns} turn(s) here are structurally invisible to any single-response checker —
+        no threshold fixes that, because the signal does not exist inside one response.</div>`;
+  } else {
+    el.innerHTML = `<div class="line">Benign session — both correctly stayed quiet
+      <span style="color:${v.session_caught?'var(--red)':'var(--green)'}">
+      (${v.session_caught?'FALSE POSITIVE':'0 false positives ✓'})</span></div>
+      <div style="color:var(--text-2);font-size:0.78rem;margin-top:0.3rem;">
+        The accumulator adds sensitivity without crying wolf on an ordinary multi-turn conversation.</div>`;
+  }
+
+  // Honest degradation — union of degraded lists across turns.
+  const degs = [...new Set(data.turns.flatMap(t=>t.session.degraded||[]))];
+  document.getElementById('degraded').innerHTML = degs.length
+    ? degs.map(d=>`<div class="deg">⚠ ${escapeHtml(d)}</div>`).join('') +
+      `<div style="font-size:0.66rem;color:var(--text-3);margin-top:0.4rem;">
+         A skipped check is marked, never silently returned as clean. High stakes fail closed.</div>`
+    : `<div style="font-size:0.72rem;color:var(--text-2);">Every gated detector ran on this scenario.</div>`;
+
+  // Economics.
+  const e = data.economics;
+  document.getElementById('economics').innerHTML =
+    `<div class="row">Session bill <b>$${e.session_bill_usd.toFixed(6)}</b></div>
+     <div class="row">Retry burn <b style="color:${e.retry_burn>=0.3?'var(--amber)':'var(--text)'}">${e.retry_burn.toFixed(2)}</b></div>
+     <div class="row">Cost creep vs budget <b style="color:${e.cost_creep>=0.6?'var(--amber)':'var(--text)'}">${e.cost_creep.toFixed(2)}</b></div>
+     <div style="font-size:0.66rem;color:var(--text-3);margin-top:0.4rem;">
+       Per-response cost never looks alarming. The session total, and the same question re-asked four ways, do.</div>`;
+
+  btn.disabled = false; btn.textContent = '▶ Run showdown';
+}
+
+async function loadExternal(){
+  const d = await (await fetch('/api/benchmark-external')).json();
+  if (!d.available) return;  // benchmark not generated yet — hide the card
+  const pct = v => (v*100).toFixed(0)+'%';
+  document.getElementById('ext-r0').textContent = pct(d.heuristics.recall);
+  document.getElementById('ext-r1').textContent = pct(d.with_model.recall);
+  document.getElementById('ext-a0').textContent = d.heuristics.auc.toFixed(2);
+  document.getElementById('ext-a1').textContent = d.with_model.auc.toFixed(2);
+  document.getElementById('ext-fpr').textContent = pct(d.with_model.fpr);
+  document.getElementById('ext-n').textContent = `${d.n_prompts} prompts · ${d.n_attack} attack`;
+  document.getElementById('ext-prov').textContent = d.dataset;
+  document.getElementById('ext').classList.remove('hidden');
+}
+
+document.getElementById('run').onclick = run;
+loadBench(); loadScenarios(); loadExternal();
+</script>
+{% endblock %}

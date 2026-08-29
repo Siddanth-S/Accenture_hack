@@ -1,30 +1,71 @@
 {% set actions = stats.get("actions", {}) %}
+{% set total = stats.records or 1 %}
+{% set passed = actions.get("pass", 0) + actions.get("pass_with_citations", 0) %}
+{% set redacted = actions.get("redact", 0) %}
+{% set regen = actions.get("regenerate", 0) %}
+{% set escalated = actions.get("escalate", 0) %}
+{% set blocked = actions.get("block", 0) %}
+{% set flagged = escalated + blocked %}
 
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.6rem;">
-  {% for label, value, color, dim_color in [
-       ("Decisions",   stats.records,                       "var(--text)",   "var(--text-2)"),
-       ("Passed",      actions.get("pass", 0),               "var(--green)",  "var(--green)"),
-       ("Redacted",    actions.get("redact", 0),             "var(--amber)",  "var(--amber)"),
-       ("Regenerated", actions.get("regenerate", 0),         "var(--amber)",  "var(--amber)"),
-       ("Escalated",   actions.get("escalate", 0),           "var(--red)",    "var(--red)"),
-       ("Blocked",     actions.get("block", 0),              "var(--red)",    "var(--red)"),
-       ("Avg latency", stats.avg_latency_ms|round(1)|string~"ms", "var(--blue)", "var(--blue)"),
-     ] %}
-  <div style="
-    background: var(--raised);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.75rem 0.9rem;
-    transition: border-color 140ms;
-  " onmouseover="this.style.borderColor='var(--border-2)'"
-     onmouseout="this.style.borderColor='var(--border)'">
-    <div class="mono" style="font-size: 1.35rem; font-weight: 500; color: {{ color }}; line-height: 1.1;">
-      {{ value }}
-    </div>
-    <div class="disp" style="font-size: 0.62rem; color: var(--text-3); letter-spacing: 0.08em;
-                text-transform: uppercase; margin-top: 0.3rem;">
-      {{ label }}
+<div class="glass" style="padding:1.8rem 2rem;display:grid;grid-template-columns:auto 1px 1fr;gap:2.2rem;align-items:center;">
+
+  <!-- Primary figure -->
+  <div style="min-width:180px;">
+    <div style="font-family:'Space Grotesk';font-weight:700;letter-spacing:-0.05em;line-height:0.85;
+         font-size:clamp(3.4rem,6vw,5.2rem);
+         background:linear-gradient(120deg,var(--cyan),var(--blue));-webkit-background-clip:text;background-clip:text;color:transparent;">
+      {{ stats.records }}</div>
+    <div style="font-size:0.72rem;color:var(--text-3);letter-spacing:0.14em;text-transform:uppercase;margin-top:0.5rem;">
+      decisions processed</div>
+    <div style="display:inline-flex;align-items:center;gap:0.5rem;margin-top:0.9rem;padding:0.4rem 0.8rem;
+         border:1px solid var(--border);border-radius:100px;background:var(--glass);">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan);"></span>
+      <span class="mono" style="font-size:0.74rem;color:var(--text-2);">{{ stats.avg_latency_ms|round(1) }}ms avg</span>
     </div>
   </div>
-  {% endfor %}
+
+  <div style="width:1px;height:82px;background:linear-gradient(var(--border),transparent,var(--border));"></div>
+
+  <!-- Action-distribution flow bar -->
+  <div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.85rem;">
+      <span style="font-size:0.66rem;color:var(--text-3);letter-spacing:0.16em;text-transform:uppercase;">Action distribution</span>
+      <span class="mono" style="font-size:0.72rem;color:var(--text-2);">
+        <b style="color:var(--green)">{{ ((passed/total*100)|round(0))|int }}%</b> cleared
+        {% if flagged %}· <b style="color:var(--red)">{{ flagged }}</b> flagged{% endif %}
+      </span>
+    </div>
+    <div style="display:flex;height:14px;border-radius:100px;overflow:hidden;background:var(--raised-2);
+         border:1px solid var(--border);">
+      {% for val, col in [
+           (passed,   "var(--green)"),
+           (redacted, "var(--amber)"),
+           (regen,    "#F0B429"),
+           (escalated,"var(--red)"),
+           (blocked,  "#c0303e"),
+         ] %}
+      {% if val > 0 %}
+      <div title="{{ val }}" style="width:{{ (val/total*100) }}%;background:{{ col }};
+           box-shadow:0 0 12px {{ col }};transition:width .8s var(--ease-out);
+           border-right:1px solid rgba(5,7,15,0.6);"></div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    <!-- Legend -->
+    <div style="display:flex;flex-wrap:wrap;gap:1.4rem;margin-top:1rem;">
+      {% for label, val, col in [
+           ("Passed", passed, "var(--green)"),
+           ("Redacted", redacted, "var(--amber)"),
+           ("Regenerated", regen, "#F0B429"),
+           ("Escalated", escalated, "var(--red)"),
+           ("Blocked", blocked, "#c0303e"),
+         ] %}
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <span style="width:9px;height:9px;border-radius:3px;background:{{ col }};box-shadow:0 0 8px {{ col }};"></span>
+        <span style="font-size:0.72rem;color:var(--text-2);">{{ label }}</span>
+        <span class="mono" style="font-size:0.8rem;color:var(--text);font-weight:600;">{{ val }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
 </div>

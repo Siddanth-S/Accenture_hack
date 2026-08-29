@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <radialGradient id="orb" cx="36%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#7EF0FF"/>
+      <stop offset="45%" stop-color="#46E4FF"/>
+      <stop offset="72%" stop-color="#3D7BFF"/>
+      <stop offset="100%" stop-color="#7A5CFF"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="#05070F"/>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="13.5" fill="none" stroke="#3D7BFF" stroke-opacity="0.28"/>
+  <!-- orbit ring -->
+  <circle cx="32" cy="32" r="20" fill="none" stroke="#46E4FF" stroke-opacity="0.35" stroke-width="1.4"/>
+  <!-- core orb -->
+  <circle cx="32" cy="32" r="12.5" fill="url(#orb)" filter="url(#glow)"/>
+  <!-- upward spark: the "pre-flight" check that fires before the token ships -->
+  <path d="M32 25.5 L36.5 34.5 L32 32 L27.5 34.5 Z" fill="#05070F" fill-opacity="0.9"/>
+  <circle cx="52" cy="12" r="2.4" fill="#46E4FF" filter="url(#glow)"/>
+</svg>
