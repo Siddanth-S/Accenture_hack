@@ -1,17 +1,23 @@
-# Render Blueprint — one-click deploy.
-# On https://dashboard.render.com  →  New  →  Blueprint  →  connect this repo.
-# Render builds the Dockerfile, injects $PORT, and gives a public HTTPS URL.
+# Render Blueprint — one-click, NO Docker. Native Python, always-on server
+# (so the in-memory session accumulator + SQLite ledger keep working — the whole
+# point of Preflight needs a persistent server, not serverless).
+#
+# Deploy:  https://dashboard.render.com  →  New  →  Blueprint  →  connect this repo.
 services:
   - type: web
     name: preflight
-    runtime: docker
+    runtime: python
     plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn preflight.proxy:app --host 0.0.0.0 --port $PORT --app-dir src
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      # Optional: set these in the Render dashboard to enable live model calls.
-      # Left unset, the app runs the lexical fallbacks + cached benchmark (still
-      # a full working demo: Showdown, Live, Governance, Queue all function).
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      # Optional — set in the dashboard to enable live model calls in Chat.
+      # Unset, the app runs the lexical fallbacks + cached benchmark; Showdown,
+      # Live, Governance, Queue all still function as a full demo.
       - key: UPSTREAM_API_KEY
         sync: false
       - key: UPSTREAM_BASE_URL
