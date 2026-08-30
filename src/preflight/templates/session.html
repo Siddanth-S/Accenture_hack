@@ -72,7 +72,7 @@
 
     <!-- Turn badge -->
     <span class="mono" style="font-size: 0.72rem; font-weight: 600;
-                              background: rgba(255,255,255,0.05); padding: 0.28rem 0.7rem;
+                              background: rgba(255,255,255,0.6); padding: 0.28rem 0.7rem;
                               border-radius: 100px; color: var(--text-2); letter-spacing: 0.05em;
                               border: 1px solid var(--border);">
       T{{ t.turn }}
@@ -89,7 +89,7 @@
     <!-- Model routing -->
     {% if t.model_requested %}
     <span style="font-size: 0.7rem; color: var(--muted);">
-      <span class="mono" style="color: #8891A0;">{{ t.model_requested }}</span>
+      <span class="mono" style="color: #8A7768;">{{ t.model_requested }}</span>
       {% if t.model_routed and t.model_routed != t.model_requested %}
         <span style="color: var(--dimmer);"> → </span>
         <span class="mono" style="color: var(--cleared);">{{ t.model_routed }}</span>
@@ -98,7 +98,7 @@
         {% endif %}
       {% else %}
         <span style="color: var(--dimmer);"> → </span>
-        <span class="mono" style="color: #8891A0;">{{ t.model_routed or t.model_requested }}</span>
+        <span class="mono" style="color: #8A7768;">{{ t.model_routed or t.model_requested }}</span>
       {% endif %}
     </span>
     {% endif %}
@@ -125,7 +125,7 @@
                                 text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem;">
         User Prompt
       </div>
-      <div style="font-size: 0.78rem; line-height: 1.55; color: #C8CDD8; white-space: pre-wrap;">{{ t.prompt or "—" }}</div>
+      <div style="font-size: 0.78rem; line-height: 1.55; color: #4A3A31; white-space: pre-wrap;">{{ t.prompt or "—" }}</div>
     </div>
 
     <!-- Response -->
@@ -135,7 +135,7 @@
                                 text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem;">
         Model Response
       </div>
-      <div style="font-size: 0.78rem; line-height: 1.55; color: #C8CDD8; white-space: pre-wrap;">{{ t.response or "—" }}</div>
+      <div style="font-size: 0.78rem; line-height: 1.55; color: #4A3A31; white-space: pre-wrap;">{{ t.response or "—" }}</div>
     </div>
 
   </div>
@@ -226,7 +226,7 @@
       <div style="margin-bottom: 0.5rem; padding-bottom: 0.5rem;
                   border-bottom: 1px solid var(--border);">
         <div style="display: flex; justify-content: space-between; align-items: baseline;">
-          <span class="mono" style="font-size: 0.63rem; color: {% if not ran_flag %}var(--dimmer){% else %}#8891A0{% endif %};">
+          <span class="mono" style="font-size: 0.63rem; color: {% if not ran_flag %}var(--dimmer){% else %}#8A7768{% endif %};">
             {{ f.detector }}{% if not ran_flag %} <span style="color: var(--dimmer);">skipped</span>{% endif %}
           </span>
           <span class="mono" style="font-size: 0.65rem; color: {{ f_color }}; font-weight: 500;">
@@ -312,10 +312,10 @@
 (function () {
   var turnLabels = {{ turns | map(attribute='turn') | list | tojson }};
   var signals = [
-    { name: 'Escalation gradient', color: '#FF5A6E', key: 'escalation_gradient' },
-    { name: 'Contamination',       color: '#FFB84D', key: 'contamination' },
-    { name: 'Retry burn',          color: '#46E4FF', key: 'retry_burn' },
-    { name: 'Cost creep',          color: '#7A5CFF', key: 'cost_creep' },
+    { name: 'Escalation gradient', color: '#D11149', key: 'escalation_gradient' },
+    { name: 'Contamination',       color: '#CC7A33', key: 'contamination' },
+    { name: 'Retry burn',          color: '#ED7B84', key: 'retry_burn' },
+    { name: 'Cost creep',          color: '#C9528A', key: 'cost_creep' },
   ];
   var rawData = {{ turns | map(attribute='session_risk') | list | tojson }};
 
@@ -327,7 +327,7 @@
       symbol: 'circle',
       symbolSize: 6,
       lineStyle: { color: sig.color, width: 2.4, shadowColor: sig.color+'88', shadowBlur: 10 },
-      itemStyle: { color: sig.color, borderColor: '#05070F', borderWidth: 2 },
+      itemStyle: { color: sig.color, borderColor: '#F5DBCB', borderWidth: 2 },
       data: rawData.map(function(sr) { return sr[sig.key] || 0; }),
     };
   });
@@ -339,31 +339,31 @@
     grid: { top: 16, bottom: 28, left: 8, right: 8, containLabel: true },
     legend: {
       data: signals.map(function(s){ return s.name; }),
-      textStyle: { color: '#555C6B', fontSize: 10 },
+      textStyle: { color: '#A08E7A', fontSize: 10 },
       itemHeight: 8, itemWidth: 14,
       top: 0, right: 0,
     },
     xAxis: {
       type: 'category',
       data: turnLabels.map(function(n){ return 'T' + n; }),
-      axisLine: { lineStyle: { color: '#2A2D35' } },
-      axisLabel: { color: '#555C6B', fontSize: 10 },
+      axisLine: { lineStyle: { color: '#EFDECF' } },
+      axisLabel: { color: '#A08E7A', fontSize: 10 },
       axisTick: { show: false },
     },
     yAxis: {
       type: 'value', min: 0, max: 1,
       splitNumber: 4,
-      axisLabel: { color: '#555C6B', fontSize: 9,
+      axisLabel: { color: '#A08E7A', fontSize: 9,
                    formatter: function(v){ return v.toFixed(1); } },
-      splitLine: { lineStyle: { color: '#2A2D35', type: 'dashed' } },
+      splitLine: { lineStyle: { color: '#EFDECF', type: 'dashed' } },
       axisLine: { show: false },
       axisTick: { show: false },
     },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#1F2229',
-      borderColor: '#2A2D35',
-      textStyle: { color: '#C8CDD8', fontSize: 11 },
+      backgroundColor: '#F3E3D6',
+      borderColor: '#EFDECF',
+      textStyle: { color: '#4A3A31', fontSize: 11 },
       formatter: function(params) {
         var s = '<b>' + params[0].axisValue + '</b><br/>';
         params.forEach(function(p) {

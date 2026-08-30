@@ -38,7 +38,7 @@
   <div class="card" style="padding:1.3rem 1.5rem;">
     <div style="font-size:0.78rem;color:var(--text-2);margin-bottom:1rem;line-height:1.5;">
       Every decision is sealed with the SHA-256 of its predecessor. Edit any historical
-      record and every hash downstream breaks — <b style="color:var(--text-1);">press
+      record and every hash downstream breaks — <b style="color:var(--text);">press
       Tamper, then Verify</b> to watch the chain name the exact altered record.
     </div>
     {{ chain | safe }}
@@ -48,24 +48,24 @@
 <style>
   .chain-wrap{border:1px solid var(--border);border-radius:6px;padding:1rem 1.1rem;
     background:var(--panel-raised);transition:border-color .3s,box-shadow .3s;}
-  .chain-wrap.is-ok{border-color:rgba(53,224,192,0.4);box-shadow:0 0 24px rgba(53,224,192,0.08);}
-  .chain-wrap.is-broken{border-color:rgba(255,90,110,0.55);box-shadow:0 0 30px rgba(255,90,110,0.16);}
+  .chain-wrap.is-ok{border-color:rgba(87,166,91,0.45);box-shadow:0 0 24px rgba(87,166,91,0.10);}
+  .chain-wrap.is-broken{border-color:rgba(209,17,73,0.55);box-shadow:0 0 30px rgba(209,17,73,0.16);}
   .chain-row{display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap;}
   .chain-badge{font-family:'Space Grotesk';font-weight:700;letter-spacing:0.06em;
     font-size:0.82rem;padding:0.28rem 0.7rem;border-radius:4px;}
-  .chain-ok{color:#35E0C0;background:rgba(53,224,192,0.12);border:1px solid rgba(53,224,192,0.4);}
-  .chain-broken{color:#FF5A6E;background:rgba(255,90,110,0.14);border:1px solid rgba(255,90,110,0.5);}
+  .chain-ok{color:#4E9D53;background:rgba(87,166,91,0.14);border:1px solid rgba(87,166,91,0.42);}
+  .chain-broken{color:#D11149;background:rgba(209,17,73,0.12);border:1px solid rgba(209,17,73,0.5);}
   .chain-detail{font-size:0.74rem;color:var(--text-2);}
-  .chain-detail b{color:#FF5A6E;}
+  .chain-detail b{color:#D11149;}
   .chain-note{font-size:0.73rem;color:var(--text-2);margin-top:0.7rem;padding-top:0.7rem;
     border-top:1px dashed var(--border);line-height:1.5;font-family:'IBM Plex Mono',monospace;}
   .chain-actions{display:flex;gap:0.6rem;margin-top:0.9rem;}
   .chain-btn{font-family:'Space Grotesk';font-weight:600;font-size:0.72rem;letter-spacing:0.03em;
     padding:0.45rem 0.9rem;border-radius:4px;cursor:pointer;background:transparent;transition:all .2s;}
-  .chain-tamper{color:#FFB84D;border:1px solid rgba(255,184,77,0.45);}
-  .chain-tamper:hover{background:rgba(255,184,77,0.14);}
-  .chain-verify{color:#46E4FF;border:1px solid rgba(70,228,255,0.45);}
-  .chain-verify:hover{background:rgba(70,228,255,0.14);}
+  .chain-tamper{color:#CC7A33;border:1px solid rgba(204,122,51,0.45);}
+  .chain-tamper:hover{background:rgba(204,122,51,0.14);}
+  .chain-verify{color:#C9528A;border:1px solid rgba(201,82,138,0.5);}
+  .chain-verify:hover{background:rgba(201,82,138,0.14);}
 </style>
 
 <!-- Charts row -->
@@ -117,14 +117,14 @@
           "block":      "var(--warning)",
         }.get(action, "var(--muted)") %}
         <tr style="border-bottom: 1px solid var(--border); {% if loop.last %}border-bottom:none;{% endif %}">
-          <td class="mono" style="padding: 0.6rem 0.9rem; color: #8891A0;">{{ axis }}</td>
+          <td class="mono" style="padding: 0.6rem 0.9rem; color: #8A7768;">{{ axis }}</td>
           <td style="padding: 0.6rem 0.9rem;">
             <span style="font-size: 0.65rem; letter-spacing: 0.06em; text-transform: uppercase;
                          color: {% if scope == 'session' %}var(--caution){% else %}var(--muted){% endif %};">
               {{ scope }}
             </span>
           </td>
-          <td class="mono" style="padding: 0.6rem 0.9rem; color: #D4D8E0;">≥ {{ thresh }}</td>
+          <td class="mono" style="padding: 0.6rem 0.9rem; color: #4A3A31;">≥ {{ thresh }}</td>
           <td class="disp" style="padding: 0.6rem 0.9rem; font-weight: 700; font-size: 0.7rem;
                                    letter-spacing: 0.06em; text-transform: uppercase;
                                    color: {{ action_color }};">{{ action }}</td>
@@ -141,13 +141,13 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script>
-const BLUE="#3D7BFF", CYAN="#46E4FF", INDIGO="#7A5CFF",
-      GREEN="#35E0C0", AMBER="#FFB84D", RED="#FF5A6E",
-      MUTED="#808AB4", TEXT="#E9EDFF", PANEL="rgba(12,16,32,0.96)";
+const BLUE="#F92A82", CYAN="#ED7B84", INDIGO="#C9528A",
+      GREEN="#57A65B", AMBER="#CC7A33", RED="#D11149",
+      MUTED="#8A7768", TEXT="#33231C", PANEL="rgba(254,246,240,0.98)";
 const grad=(a,b)=>new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:a},{offset:1,color:b}]);
-const ACTION_COLORS={pass:GREEN,pass_with_citations:GREEN,redact:AMBER,regenerate:"#F0B429",escalate:RED,block:"#c0303e"};
-const tip={backgroundColor:PANEL,borderColor:"rgba(130,160,255,0.2)",
-  textStyle:{color:TEXT,fontFamily:"IBM Plex Mono",fontSize:11},extraCssText:"backdrop-filter:blur(10px);border-radius:10px;"};
+const ACTION_COLORS={pass:GREEN,pass_with_citations:GREEN,redact:AMBER,regenerate:"#E0913A",escalate:RED,block:"#A50E3C"};
+const tip={backgroundColor:PANEL,borderColor:"rgba(151,86,72,0.25)",
+  textStyle:{color:TEXT,fontFamily:"IBM Plex Mono",fontSize:11},extraCssText:"backdrop-filter:blur(10px);border-radius:10px;box-shadow:0 8px 24px rgba(151,86,72,0.18);"};
 
 // ── Flag-rate gauge ──────────────────────────────────────────────
 const actionsRaw={{ actions_json | safe }};
@@ -157,8 +157,8 @@ const flagRate=+(_flag/_tot*100).toFixed(1);
 const gauge=echarts.init(document.getElementById("chart-gauge"));
 gauge.setOption({backgroundColor:"transparent",
   series:[{type:"gauge",startAngle:210,endAngle:-30,min:0,max:100,radius:"92%",center:["50%","56%"],
-    progress:{show:true,width:14,roundCap:true,itemStyle:{color:grad(CYAN,BLUE),shadowColor:"rgba(61,123,255,0.6)",shadowBlur:14}},
-    axisLine:{lineStyle:{width:14,color:[[1,"rgba(120,150,255,0.12)"]]}},
+    progress:{show:true,width:14,roundCap:true,itemStyle:{color:grad(CYAN,BLUE),shadowColor:"rgba(249,42,130,0.6)",shadowBlur:14}},
+    axisLine:{lineStyle:{width:14,color:[[1,"rgba(151,86,72,0.12)"]]}},
     pointer:{show:true,length:"58%",width:4,itemStyle:{color:CYAN}},
     anchor:{show:true,size:12,itemStyle:{color:CYAN}},
     axisTick:{show:false},splitLine:{show:false},
@@ -193,14 +193,14 @@ latChart.setOption({backgroundColor:"transparent",
     formatter:p=>`${p[0].name} ms<br><b style="color:${CYAN}">${p[0].value}</b> request${p[0].value!==1?"s":""}`},
   xAxis:{type:"category",data:latLabels,boundaryGap:false,
     axisLabel:{color:MUTED,fontSize:9,fontFamily:"IBM Plex Mono"},
-    axisLine:{lineStyle:{color:"rgba(120,150,255,0.15)"}},axisTick:{show:false}},
+    axisLine:{lineStyle:{color:"rgba(151,86,72,0.15)"}},axisTick:{show:false}},
   yAxis:{type:"value",minInterval:1,
     axisLabel:{color:MUTED,fontSize:9,fontFamily:"IBM Plex Mono"},axisLine:{show:false},
-    splitLine:{lineStyle:{color:"rgba(120,150,255,0.08)"}}},
+    splitLine:{lineStyle:{color:"rgba(151,86,72,0.08)"}}},
   series:[{type:"line",data:latBuckets,smooth:true,symbol:"circle",symbolSize:6,
-    lineStyle:{width:2.5,color:grad(CYAN,BLUE),shadowColor:"rgba(61,123,255,0.5)",shadowBlur:12},
-    itemStyle:{color:CYAN,borderColor:"#0C1020",borderWidth:2},
-    areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:"rgba(61,123,255,0.4)"},{offset:1,color:"rgba(61,123,255,0.01)"}])},
+    lineStyle:{width:2.5,color:grad(CYAN,BLUE),shadowColor:"rgba(249,42,130,0.5)",shadowBlur:12},
+    itemStyle:{color:CYAN,borderColor:"#FEF6F0",borderWidth:2},
+    areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:"rgba(249,42,130,0.4)"},{offset:1,color:"rgba(249,42,130,0.01)"}])},
     animationDuration:1400,animationEasing:"cubicOut"}]});
 
 addEventListener("resize",()=>{gauge.resize();donut.resize();latChart.resize();});

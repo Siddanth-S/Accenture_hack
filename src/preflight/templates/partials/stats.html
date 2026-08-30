@@ -40,9 +40,9 @@
       {% for val, col in [
            (passed,   "var(--green)"),
            (redacted, "var(--amber)"),
-           (regen,    "#F0B429"),
+           (regen,    "#E0913A"),
            (escalated,"var(--red)"),
-           (blocked,  "#c0303e"),
+           (blocked,  "#A50E3C"),
          ] %}
       {% if val > 0 %}
       <div title="{{ val }}" style="width:{{ (val/total*100) }}%;background:{{ col }};
@@ -56,9 +56,9 @@
       {% for label, val, col in [
            ("Passed", passed, "var(--green)"),
            ("Redacted", redacted, "var(--amber)"),
-           ("Regenerated", regen, "#F0B429"),
+           ("Regenerated", regen, "#E0913A"),
            ("Escalated", escalated, "var(--red)"),
-           ("Blocked", blocked, "#c0303e"),
+           ("Blocked", blocked, "#A50E3C"),
          ] %}
       <div style="display:flex;align-items:center;gap:0.5rem;">
         <span style="width:9px;height:9px;border-radius:3px;background:{{ col }};box-shadow:0 0 8px {{ col }};"></span>
