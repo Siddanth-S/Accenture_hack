@@ -229,6 +229,7 @@ async def governance(request: Request):
 
     return TEMPLATES.TemplateResponse(request, "governance.html", {
         "stats": stats,
+        "chain": _chain_partial(),
         "actions_json": json.dumps([
             {"name": k, "value": v}
             for k, v in stats.get("actions", {}).items()
@@ -240,3 +241,50 @@ async def governance(request: Request):
         ),
         **_ctx("governance", {}),
     })
+
+
+# --------------------------------------------------------------------------
+# Tamper-evidence demo — turn the README claim into a button a judge can press.
+# `verify_chain()` already names the exact broken sequence number; these two
+# routes let the console SHOW it: tamper a historical record, then re-verify
+# and watch the chain report the break.
+# --------------------------------------------------------------------------
+
+def _chain_partial(msg: str = "", tampered_seq: int | None = None) -> str:
+    status = _ledger.verify_chain()
+    if status.intact:
+        badge = (f'<span class="chain-badge chain-ok">✓ CHAIN INTACT</span>'
+                 f'<span class="chain-detail">{status.records} records '
+                 f'cryptographically verified · SHA-256 linked</span>')
+    else:
+        badge = (f'<span class="chain-badge chain-broken">✕ TAMPER DETECTED</span>'
+                 f'<span class="chain-detail">break at <b>seq '
+                 f'{status.broken_at}</b> — {status.detail}</span>')
+    note = f'<div class="chain-note">{msg}</div>' if msg else ""
+    return f"""
+<div id="chain-status" class="chain-wrap {'is-broken' if not status.intact else 'is-ok'}">
+  <div class="chain-row">{badge}</div>
+  {note}
+  <div class="chain-actions">
+    <button class="chain-btn chain-tamper" hx-post="/console/ledger/tamper"
+            hx-target="#chain-status" hx-swap="outerHTML">⚠ Tamper a record</button>
+    <button class="chain-btn chain-verify" hx-get="/console/ledger/verify"
+            hx-target="#chain-status" hx-swap="outerHTML">↻ Verify integrity</button>
+  </div>
+</div>"""
+
+
+@router.get("/console/ledger/verify", response_class=HTMLResponse)
+async def ledger_verify(request: Request):
+    return HTMLResponse(_chain_partial("Re-walked the chain and recomputed every hash."))
+
+
+@router.post("/console/ledger/tamper", response_class=HTMLResponse)
+async def ledger_tamper(request: Request):
+    result = _ledger.tamper()
+    if not result.get("tampered"):
+        return HTMLResponse(_chain_partial(result.get("detail", "nothing to tamper")))
+    msg = (f"Silently rewrote seq {result['seq']}: "
+           f"“{result['original_reason'][:60]}” → “{result['forged_reason']}”. "
+           f"Its hash was NOT recomputed. Now press Verify.")
+    return HTMLResponse(_chain_partial(msg, tampered_seq=result["seq"]))

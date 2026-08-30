@@ -21,6 +21,7 @@
        ("Flag rate",         flag_rate|string ~ "%",                         "escalate + block",         ("var(--red)" if flagged > 0 else "var(--green)")),
        ("Avg latency",       stats.avg_latency_ms | round(1)|string ~ "ms",  "p50 engine overhead",      "var(--blue)"),
        ("Cost tracked",      "$" ~ stats.total_cost_usd | round(5)|string,   "session-level ledger",     "var(--indigo)"),
+       ("Cost avoided",      "$" ~ (stats.total_cost_avoided_usd | default(0) | round(5))|string, "routed down, never up", "var(--green)"),
      ] %}
   <div class="card" data-tilt data-hover style="padding:1.4rem 1.5rem;">
     <div style="font-family:'Space Grotesk';font-weight:700;letter-spacing:-0.04em;line-height:0.9;
@@ -30,6 +31,42 @@
   </div>
   {% endfor %}
 </div>
+
+<!-- Tamper-evident ledger — press it, don't just read about it -->
+<div style="margin-bottom:1.4rem;">
+  <div class="section-label" style="margin-bottom:0.7rem;">Tamper-evident ledger — SHA-256 hash chain</div>
+  <div class="card" style="padding:1.3rem 1.5rem;">
+    <div style="font-size:0.78rem;color:var(--text-2);margin-bottom:1rem;line-height:1.5;">
+      Every decision is sealed with the SHA-256 of its predecessor. Edit any historical
+      record and every hash downstream breaks — <b style="color:var(--text-1);">press
+      Tamper, then Verify</b> to watch the chain name the exact altered record.
+    </div>
+    {{ chain | safe }}
+  </div>
+</div>
+
+<style>
+  .chain-wrap{border:1px solid var(--border);border-radius:6px;padding:1rem 1.1rem;
+    background:var(--panel-raised);transition:border-color .3s,box-shadow .3s;}
+  .chain-wrap.is-ok{border-color:rgba(53,224,192,0.4);box-shadow:0 0 24px rgba(53,224,192,0.08);}
+  .chain-wrap.is-broken{border-color:rgba(255,90,110,0.55);box-shadow:0 0 30px rgba(255,90,110,0.16);}
+  .chain-row{display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap;}
+  .chain-badge{font-family:'Space Grotesk';font-weight:700;letter-spacing:0.06em;
+    font-size:0.82rem;padding:0.28rem 0.7rem;border-radius:4px;}
+  .chain-ok{color:#35E0C0;background:rgba(53,224,192,0.12);border:1px solid rgba(53,224,192,0.4);}
+  .chain-broken{color:#FF5A6E;background:rgba(255,90,110,0.14);border:1px solid rgba(255,90,110,0.5);}
+  .chain-detail{font-size:0.74rem;color:var(--text-2);}
+  .chain-detail b{color:#FF5A6E;}
+  .chain-note{font-size:0.73rem;color:var(--text-2);margin-top:0.7rem;padding-top:0.7rem;
+    border-top:1px dashed var(--border);line-height:1.5;font-family:'IBM Plex Mono',monospace;}
+  .chain-actions{display:flex;gap:0.6rem;margin-top:0.9rem;}
+  .chain-btn{font-family:'Space Grotesk';font-weight:600;font-size:0.72rem;letter-spacing:0.03em;
+    padding:0.45rem 0.9rem;border-radius:4px;cursor:pointer;background:transparent;transition:all .2s;}
+  .chain-tamper{color:#FFB84D;border:1px solid rgba(255,184,77,0.45);}
+  .chain-tamper:hover{background:rgba(255,184,77,0.14);}
+  .chain-verify{color:#46E4FF;border:1px solid rgba(70,228,255,0.45);}
+  .chain-verify:hover{background:rgba(70,228,255,0.14);}
+</style>
 
 <!-- Charts row -->
 <div style="display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:1rem;margin-bottom:1.4rem;">

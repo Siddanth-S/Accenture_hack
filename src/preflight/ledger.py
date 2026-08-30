@@ -190,7 +190,10 @@ class Ledger:
         row = self._conn.execute(
             """SELECT COUNT(*) n,
                       COALESCE(AVG(latency_ms),0)  avg_latency,
-                      COALESCE(SUM(cost_usd),0)    total_cost
+                      COALESCE(SUM(cost_usd),0)    total_cost,
+                      COALESCE(SUM(
+                        CAST(json_extract(payload,'$.cost_avoided_usd') AS REAL)
+                      ),0) total_avoided
                FROM ledger"""
         ).fetchone()
         actions = self._conn.execute(
@@ -200,6 +203,7 @@ class Ledger:
             "records": row["n"],
             "avg_latency_ms": round(row["avg_latency"], 2),
             "total_cost_usd": round(row["total_cost"], 5),
+            "total_cost_avoided_usd": round(row["total_avoided"] or 0.0, 5),
             "actions": {r["action"]: r["c"] for r in actions},
         }
 
@@ -239,6 +243,36 @@ class Ledger:
             prev = row["record_hash"]
             n += 1
         return ChainStatus(True, n, None, f"{n} records verified")
+
+    def tamper(self, seq: int | None = None) -> dict[str, Any]:
+        """DEMONSTRATION ONLY — silently rewrite a historical record's `reason`
+        without recomputing its hash, exactly as an attacker editing the DB
+        would. The whole point of the chain is that this is detectable:
+        verify_chain() will now name `seq` as the break. Not for production use;
+        it exists so the tamper-evidence claim can be *shown*, not just asserted.
+        """
+        if seq is None:
+            row = self._conn.execute(
+                "SELECT seq FROM ledger ORDER BY seq ASC LIMIT 1"
+            ).fetchone()
+            if row is None:
+                return {"tampered": False, "detail": "ledger is empty"}
+            seq = row["seq"]
+
+        row = self._conn.execute(
+            "SELECT reason FROM ledger WHERE seq=?", (seq,)
+        ).fetchone()
+        if row is None:
+            return {"tampered": False, "detail": f"no record at seq {seq}"}
+
+        original = row["reason"]
+        forged = "APPROVED — no issues found (record altered post-hoc)"
+        self._conn.execute(
+            "UPDATE ledger SET reason=? WHERE seq=?", (forged, seq)
+        )
+        self._conn.commit()
+        return {"tampered": True, "seq": seq,
+                "original_reason": original, "forged_reason": forged}
 
     def _iter_all(self) -> Iterator[sqlite3.Row]:
         cur = self._conn.execute("SELECT * FROM ledger ORDER BY seq ASC")

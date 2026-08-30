@@ -91,6 +91,14 @@ is the bottleneck, not us. That is what "sidecar, not gatekeeper" actually
 buys. Roughly 70% of traffic terminates at stage 0–1; the expensive tail runs
 where the stakes justify it.
 
+And it is *real*, not just described: `POST /v1/chat/completions` with
+`stream: true` streams tokens straight through while the deterministic Stage-1
+checks (canary leak, response PII) run on the growing buffer and **cut the
+stream the instant a provable fault fires**. When the answer completes, the
+full engine runs, the decision is sealed into the ledger, and a trailing
+`preflight` SSE event returns the verdict in-band — so a caller learns what was
+decided without a second request.
+
 ---
 
 ## What makes this different
@@ -173,6 +181,28 @@ we are arguing against.
   not run per-request, and the cost is real.
 - `preflight-sessions-v1` is 7 hand-built sessions. Enough to demonstrate the
   mechanism, not enough to make statistical claims from.
+
+## Operating it
+
+| Surface | What it does |
+|---|---|
+| `GET /health` | live config — demo/live mode, session + turn store backend, auth, streaming |
+| `GET /metrics` | Prometheus exposition: decisions by verdict, flag rate, p50/p95/p99 engine latency, cost + cost-avoided. *We argue observability tools only draw graphs after the fact — Preflight is observable too, it just also decides.* Counters derive from the sealed ledger, so they cannot drift from what was recorded. |
+| Governance → **Tamper / Verify** | press one button to silently rewrite a historical record, another to re-walk the chain and watch it name the exact broken `seq`. The tamper-evidence claim, made pressable. |
+
+Optional hardening, all off by default so the demo needs no configuration:
+
+- `PREFLIGHT_API_KEY` — gate the inference endpoints behind a bearer token.
+- `PREFLIGHT_RATE_LIMIT_PER_MIN` — per-session sliding-window limit (default 60).
+- `PREFLIGHT_REDIS_URL` — persist the session accumulator + turn store across
+  cold starts and workers; without it, both degrade to in-memory with a warning
+  (which is why the *deployed* multi-turn demo wants Redis or an always-on host,
+  not serverless).
+
+Honesty carries through to routing: if the model that actually answered differs
+from the one Preflight routed to — e.g. an upstream quota fallback — the
+response reports `served_model` and a `routing_fallback` flag rather than
+pretending the routed model replied.
 
 ## Repo map
 

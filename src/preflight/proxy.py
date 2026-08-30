@@ -29,7 +29,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -45,7 +45,10 @@ if _env_file.exists():
             os.environ.setdefault(_k.strip(), _v.strip())
 
 from .console import router as console_router  # noqa: E402
-from .detectors.core import CANARY, counterfactual_pairs, set_injection_classifier  # noqa: E402
+from .detectors.core import (  # noqa: E402
+    CANARY, counterfactual_pairs, detect_canary, detect_pii,
+    set_injection_classifier,
+)
 from .engine import Engine, InferenceResult    # noqa: E402
 from .ledger import Ledger                     # noqa: E402
 from .embeddings import load_embedder          # noqa: E402
@@ -90,6 +93,86 @@ def _upstream_model(internal: str) -> str:
     if "openrouter" in UPSTREAM_BASE_URL:
         return _OPENROUTER_MODELS.get(internal, internal)
     return internal
+
+
+# Reverse map: an upstream (OpenRouter-namespaced) id back to the friendly
+# internal name, so a quota fallback can be reported honestly in the UI as
+# "requested X, served Y" instead of silently pretending X answered.
+# First-wins: several internal names can share one upstream slug (e.g. both
+# gpt-4o-mini and the local-qwen fallback point at openai/gpt-4o-mini), so we
+# keep the first — the canonical — internal name rather than whatever the dict
+# happened to iterate last.
+_UPSTREAM_TO_INTERNAL: dict[str, str] = {}
+for _internal, _upstream in _OPENROUTER_MODELS.items():
+    _UPSTREAM_TO_INTERNAL.setdefault(_upstream, _internal)
+
+
+def _internal_model(upstream: str) -> str:
+    return _UPSTREAM_TO_INTERNAL.get(upstream, upstream)
+
+
+# Optional gate for the inference endpoints. Unset -> open (the demo default,
+# so nothing to configure to try it). Set PREFLIGHT_API_KEY and callers must
+# present it as `Authorization: Bearer <key>` or an `x-preflight-key` header —
+# a governance product that anyone can drive without a credential is a gap a
+# reviewer will (rightly) poke at.
+PREFLIGHT_API_KEY = os.getenv("PREFLIGHT_API_KEY", "")
+
+# Per-caller rate limit: a simple in-process sliding window. Keyed by session
+# (falling back to client IP) so one runaway loop cannot exhaust the upstream
+# budget for everyone. 0 disables it.
+_RATE_LIMIT_PER_MIN = int(os.getenv("PREFLIGHT_RATE_LIMIT_PER_MIN", "60"))
+_rate_hits: dict[str, list[float]] = {}
+
+
+def _auth_ok(request: Request) -> bool:
+    """True if the request may hit an inference endpoint."""
+    if not PREFLIGHT_API_KEY:
+        return True  # open demo mode — no key configured
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        if auth[7:].strip() == PREFLIGHT_API_KEY:
+            return True
+    return request.headers.get("x-preflight-key", "") == PREFLIGHT_API_KEY
+
+
+def _rate_key(request: Request) -> str:
+    return (request.headers.get("x-session-id")
+            or (request.client.host if request.client else "anon"))
+
+
+def _rate_ok(key: str) -> bool:
+    """Sliding-window limiter. Returns False when the caller is over budget."""
+    if _RATE_LIMIT_PER_MIN <= 0:
+        return True
+    now = time.time()
+    window = _rate_hits.setdefault(key, [])
+    cutoff = now - 60.0
+    window[:] = [t for t in window if t > cutoff]
+    if len(window) >= _RATE_LIMIT_PER_MIN:
+        return False
+    window.append(now)
+    return True
+
+
+def _guard(request: Request) -> JSONResponse | None:
+    """Auth + rate-limit gate for inference endpoints. None means allowed."""
+    if not _auth_ok(request):
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"message": "Missing or invalid API key. Send "
+                               "Authorization: Bearer <PREFLIGHT_API_KEY>.",
+                               "type": "unauthorized"}},
+        )
+    if not _rate_ok(_rate_key(request)):
+        return JSONResponse(
+            status_code=429,
+            content={"error": {"message": f"Rate limit exceeded "
+                               f"({_RATE_LIMIT_PER_MIN}/min). Slow down.",
+                               "type": "rate_limited"}},
+            headers={"retry-after": "60"},
+        )
+    return None
 
 
 app = FastAPI(
@@ -248,11 +331,55 @@ def _stub_completion(model: str, text: str, tokens_in: int, tokens_out: int) -> 
 # Main proxy endpoint
 # ---------------------------------------------------------------------------
 
+async def _finalise_turn(ctx, prompt, rd, response_text, tokens_in, tokens_out):
+    """Stages 1-3 + ledger + turn store. Shared by the streaming and
+    non-streaming paths so both produce the identical decision."""
+    result   = InferenceResult(text=response_text, tokens_in=tokens_in,
+                               tokens_out=tokens_out)
+    decision = await _engine.evaluate_response(ctx, prompt, result)
+    _ledger.append(decision, _policy.version_hash)
+    state.record_turn(ctx.session_id, ctx.turn, prompt, response_text,
+                      rd.requested, rd.routed, rd.saved_usd)
+    return decision
+
+
+async def _stream_upstream(client, model_id, messages):
+    """Yield (delta_text, raw_sse_line) from an upstream streaming call.
+
+    Parses OpenAI/OpenRouter `data: {json}` frames and surfaces the content
+    delta of each so Stage 1 can inspect the answer *while it is still being
+    generated* — the whole justification for 'sidecar, not gatekeeper'."""
+    async with client.stream(
+        "POST", f"{UPSTREAM_BASE_URL}/chat/completions",
+        json={"model": model_id, "messages": messages, "stream": True},
+        headers={"Authorization": f"Bearer {UPSTREAM_API_KEY}",
+                 "Content-Type": "application/json"},
+    ) as resp:
+        resp.raise_for_status()
+        async for line in resp.aiter_lines():
+            if not line or not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+                delta = chunk["choices"][0].get("delta", {}).get("content") or ""
+            except (json.JSONDecodeError, KeyError, IndexError):
+                delta = ""
+            yield delta, line
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
+    denied = _guard(request)
+    if denied is not None:
+        return denied
+
     body      = await request.json()
     messages  = body.get("messages", [])
     prompt    = " ".join(m["content"] for m in messages if m.get("role") == "user") or ""
+    want_stream = bool(body.get("stream"))
 
     session_id = request.headers.get("x-session-id", str(uuid.uuid4()))
     use_case   = request.headers.get("x-use-case", "default")
@@ -274,7 +401,17 @@ async def chat_completions(request: Request):
             "x-preflight-faults": "; ".join(pre_faults),
         })
 
-    # Forward to upstream ----------------------------------------------------
+    # ---- Streaming path: Stage 1 runs DURING generation ---------------------
+    if want_stream:
+        return StreamingResponse(
+            _streamed_completion(ctx, prompt, rd, messages, body),
+            media_type="text/event-stream",
+            headers={"x-preflight-mode": "streaming",
+                     "cache-control": "no-cache"},
+        )
+
+    # ---- Non-streaming path -------------------------------------------------
+    served_model = rd.routed
     if not UPSTREAM_API_KEY:
         response_text = (
             "Preflight demo mode — no API key set. "
@@ -306,26 +443,99 @@ async def chat_completions(request: Request):
                                 content={"error": {"message": f"Upstream unreachable: {exc}",
                                                    "type": "upstream_error"}})
 
+        served_model  = _internal_model(upstream_data.get("model", upstream_model))
         response_text = upstream_data["choices"][0]["message"]["content"]
         usage         = upstream_data.get("usage", {})
         tokens_in     = usage.get("prompt_tokens",    max(1, len(prompt.split()) * 4 // 3))
         tokens_out    = usage.get("completion_tokens", max(1, len(response_text.split()) * 4 // 3))
 
     # Stages 1-3 -------------------------------------------------------------
-    result   = InferenceResult(text=response_text, tokens_in=tokens_in, tokens_out=tokens_out)
-    decision = await _engine.evaluate_response(ctx, prompt, result)
-    _ledger.append(decision, _policy.version_hash)
-
-    # Store prompt + response for the session detail view
-    state.record_turn(session_id, turn, prompt, response_text,
-                      rd.requested, rd.routed, rd.saved_usd)
+    decision = await _finalise_turn(ctx, prompt, rd, response_text, tokens_in, tokens_out)
 
     headers = _decision_headers(decision)
+    # Honesty: if the model that actually answered differs from the one Preflight
+    # routed to (e.g. an upstream quota fallback), say so rather than hide it.
+    headers["x-preflight-model-served"] = served_model
+    if served_model != rd.routed:
+        headers["x-preflight-routing-fallback"] = f"{rd.routed}->{served_model}"
+
     if decision.action == Action.BLOCK:
         return _block(400, f"Response blocked: {decision.reason}", headers)
     if decision.action == Action.REDACT:
         upstream_data["choices"][0]["message"]["content"] = decision.response_preview
     return JSONResponse(content=upstream_data, headers=headers)
+
+
+async def _streamed_completion(ctx, prompt, rd, messages, body):
+    """SSE generator. Streams the answer to the caller as it is produced, runs
+    the deterministic Stage-1 checks (canary leak, response PII) on the growing
+    buffer, and cuts the stream the instant a provable fault fires. When the
+    answer completes, it runs the full engine, seals the decision into the
+    ledger, and emits a trailing `preflight` event so the caller sees the
+    verdict without a second request."""
+    def _sse(obj) -> str:
+        return f"data: {json.dumps(obj)}\n\n"
+
+    cid = f"preflight-{uuid.uuid4().hex[:12]}"
+
+    def _chunk(delta="", finish=None):
+        return {"id": cid, "object": "chat.completion.chunk",
+                "created": int(time.time()), "model": rd.routed,
+                "choices": [{"index": 0, "delta": ({"content": delta} if delta else {}),
+                             "finish_reason": finish}]}
+
+    buf = []
+    cut = False
+    served_model = rd.routed
+
+    if not UPSTREAM_API_KEY:
+        demo = ("Preflight streaming demo — no API key set. Stage 1 ran on each "
+                "token as it arrived. Set UPSTREAM_API_KEY for real responses.")
+        for word in demo.split():
+            buf.append(word + " ")
+            yield _sse(_chunk(word + " "))
+    else:
+        upstream_model = _upstream_model(rd.routed)
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                async for delta, _raw in _stream_upstream(
+                    client, upstream_model, _with_canary(messages)
+                ):
+                    if not delta:
+                        continue
+                    buf.append(delta)
+                    yield _sse(_chunk(delta))
+                    # Stage 1, live: deterministic faults on the partial answer.
+                    partial = "".join(buf)
+                    if detect_canary(partial).score > 0 or detect_pii(partial)[0].score >= 0.9:
+                        cut = True
+                        yield _sse(_chunk("\n\n[Preflight cut the stream: "
+                                          "deterministic fault detected]"))
+                        break
+        except Exception as exc:  # noqa: BLE001 — surface upstream failure to caller
+            yield _sse(_chunk(f"\n\n[Upstream error: {exc}]"))
+
+    yield _sse(_chunk(finish="stop"))
+
+    response_text = "".join(buf)
+    tokens_in  = max(1, len(prompt.split()) * 4 // 3)
+    tokens_out = max(1, len(response_text.split()) * 4 // 3)
+    decision   = await _finalise_turn(ctx, prompt, rd, response_text, tokens_in, tokens_out)
+
+    # Trailing verdict event — the value the streaming path adds over a raw
+    # OpenAI stream: the caller learns what Preflight decided, in-band.
+    yield _sse({"preflight": {
+        "action":        decision.action.value,
+        "reason":        decision.reason,
+        "stream_cut":    cut,
+        "risk":          decision.risk.as_dict(),
+        "session_risk":  decision.session_risk.as_dict(),
+        "routed_model":  rd.routed,
+        "served_model":  served_model,
+        "cost_avoided_usd": rd.saved_usd,
+        "latency_ms":    round(decision.latency_ms, 2),
+    }})
+    yield "data: [DONE]\n\n"
 
 # ---------------------------------------------------------------------------
 # Replay
@@ -644,6 +854,10 @@ async def api_chat(request: Request):
     browser can render the pipeline breakdown, risk bars, and routing
     decision without a second round-trip.
     """
+    denied = _guard(request)
+    if denied is not None:
+        return denied
+
     body      = await request.json()
     prompt    = body.get("prompt", "").strip()
     session_id = body.get("session_id", "chat-default")
@@ -684,6 +898,7 @@ async def api_chat(request: Request):
 
     tokens_in = max(1, len(prompt.split()) * 4 // 3)
     response_text = ""
+    served_model = rd.routed
     deep_samples: list[str] | None = None
     deep_cf: str | None = None
     stakes = _policy.for_use_case(use_case).stakes
@@ -724,6 +939,7 @@ async def api_chat(request: Request):
                         data = await _call_upstream(client, _FALLBACK_MODEL)
                     else:
                         raise
+                served_model = _internal_model(data.get("model", used_model))
                 response_text = data["choices"][0]["message"]["content"]
                 usage = data.get("usage", {})
                 tokens_in  = usage.get("prompt_tokens", tokens_in)
@@ -756,6 +972,10 @@ async def api_chat(request: Request):
     state.record_turn(session_id, turn, prompt, response_text,
                       rd.requested, rd.routed, rd.saved_usd)
 
+    # Running per-session economics — the ROI story, accumulated live.
+    sess_turns = state.get_turns(session_id)
+    session_saved_usd = round(sum(t.get("cost_saved_usd", 0) for t in sess_turns), 6)
+
     findings_out = []
     for f in decision.findings:
         fd = f.model_dump() if hasattr(f, "model_dump") else {}
@@ -783,7 +1003,12 @@ async def api_chat(request: Request):
         "findings":       findings_out,
         "requested_model": rd.requested,
         "routed_model":   rd.routed,
+        "served_model":   served_model,
+        # Honesty: the model that actually answered may differ from the one we
+        # routed to (upstream quota fallback). Surface it instead of hiding it.
+        "routing_fallback": served_model != rd.routed,
         "cost_saved_usd": rd.saved_usd,
+        "session_saved_usd": session_saved_usd,
         "cost_usd":       decision.cost_usd,
         "latency_ms":     round(decision.latency_ms, 2),
         "triggered_by":   decision.triggered_by or [],
@@ -817,7 +1042,61 @@ async def health():
         "embed_model": _embedder.name if _embedder else None,
         "injection": "heuristics+model" if _inj_clf else "heuristics",
         "injection_model": _inj_clf.name if _inj_clf else None,
+        "auth": "required" if PREFLIGHT_API_KEY else "open",
+        "rate_limit_per_min": _RATE_LIMIT_PER_MIN,
+        "streaming": True,
     }
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    k = max(0, min(len(ordered) - 1, int(round((pct / 100.0) * (len(ordered) - 1)))))
+    return ordered[k]
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus-style exposition. We argue observability tools only draw
+    graphs after the fact — so Preflight is observable too, it just *decides*
+    as well. Counters are derived from the sealed ledger, so they cannot drift
+    from what was actually recorded."""
+    stats = _ledger.stats()
+    lats  = _ledger.latencies()
+    actions = stats.get("actions", {})
+    total = stats.get("records", 0) or 0
+    flagged = actions.get("escalate", 0) + actions.get("block", 0)
+
+    lines = [
+        "# HELP preflight_decisions_total Decisions sealed into the ledger, by action.",
+        "# TYPE preflight_decisions_total counter",
+    ]
+    for action, count in sorted(actions.items()):
+        lines.append(f'preflight_decisions_total{{action="{action}"}} {count}')
+    lines += [
+        "# HELP preflight_decisions_all Total decisions processed.",
+        "# TYPE preflight_decisions_all counter",
+        f"preflight_decisions_all {total}",
+        "# HELP preflight_flag_rate Fraction of decisions escalated or blocked.",
+        "# TYPE preflight_flag_rate gauge",
+        f"preflight_flag_rate {round(flagged / total, 4) if total else 0.0}",
+        "# HELP preflight_latency_ms Engine overhead latency in milliseconds.",
+        "# TYPE preflight_latency_ms summary",
+        f'preflight_latency_ms{{quantile="0.5"}} {round(_percentile(lats, 50), 3)}',
+        f'preflight_latency_ms{{quantile="0.95"}} {round(_percentile(lats, 95), 3)}',
+        f'preflight_latency_ms{{quantile="0.99"}} {round(_percentile(lats, 99), 3)}',
+        f"preflight_latency_ms_sum {round(sum(lats), 3)}",
+        f"preflight_latency_ms_count {len(lats)}",
+        "# HELP preflight_cost_usd_total Upstream cost tracked, in USD.",
+        "# TYPE preflight_cost_usd_total counter",
+        f"preflight_cost_usd_total {stats.get('total_cost_usd', 0)}",
+        "# HELP preflight_cost_avoided_usd_total Cost avoided by down-routing, in USD.",
+        "# TYPE preflight_cost_avoided_usd_total counter",
+        f"preflight_cost_avoided_usd_total {stats.get('total_cost_avoided_usd', 0)}",
+    ]
+    return PlainTextResponse("\n".join(lines) + "\n",
+                             media_type="text/plain; version=0.0.4")
 
 
 @app.get("/v1/decisions")

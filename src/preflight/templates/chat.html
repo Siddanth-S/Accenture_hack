@@ -1042,6 +1042,9 @@ function buildPipeline(data) {
 function buildRouting(data) {
   if (!data.requested_model) return '';
   const same = data.requested_model===data.routed_model;
+  // Honesty: if the model that actually answered differs from the one Preflight
+  // routed to (upstream quota fallback), show it rather than hide it.
+  const fallback = data.routing_fallback && data.served_model && data.served_model!==data.routed_model;
   return `<div class="a-section">
     <div class="section-label">Model Routing</div>
     <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
@@ -1050,7 +1053,9 @@ function buildRouting(data) {
       <span class="mono" style="font-size:0.72rem;color:${same?'var(--text-2)':'var(--green)'};">${data.routed_model||data.requested_model}</span>
       ${data.cost_saved_usd>0?`<span style="font-size:0.62rem;color:var(--green);margin-left:auto;">$${data.cost_saved_usd.toFixed(5)} saved</span>`:''}
     </div>
+    ${fallback?`<div style="font-size:0.62rem;color:var(--amber);margin-top:0.35rem;font-family:'IBM Plex Mono',monospace;">⚠ upstream unavailable — served by ${data.served_model} instead</div>`:''}
     ${data.cost_usd>0?`<div style="font-size:0.62rem;color:var(--text-3);margin-top:0.25rem;">cost: $${data.cost_usd.toFixed(5)}</div>`:''}
+    ${data.session_saved_usd>0?`<div style="font-size:0.62rem;color:var(--green);margin-top:0.25rem;">session saved to date: $${data.session_saved_usd.toFixed(5)}</div>`:''}
   </div>`;
 }
 

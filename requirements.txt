@@ -8,10 +8,12 @@ jinja2>=3.1
 httpx>=0.27
 python-multipart>=0.0.9
 
-# Production session + turn store (optional — set PREFLIGHT_REDIS_URL to
-# activate BOTH; each degrades to in-memory with a warning if this is
-# absent/unreachable)
-# redis>=5.0
+# Production session + turn store. Installed by default so a deploy only needs
+# PREFLIGHT_REDIS_URL set to make the session accumulator + turn store survive
+# cold starts and span workers (the fix for serverless fragmenting session
+# state). Unset, both degrade to in-memory with a warning — nothing to run
+# locally. /health reports which backend is live.
+redis>=5.0
 
 # Optional NLI entailment for groundedness (Stage 2) AND semantic retry matching
 # in the session accumulator. Set PREFLIGHT_NLI_MODEL and/or
