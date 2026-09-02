@@ -3,6 +3,11 @@
 **Accenture Innovation Challenge 2026 · Round 2 · Problem Track 1**
 Team Preflight — NITK Surathkal
 
+This is the pitch-and-reference doc. For a no-prior-knowledge walkthrough see
+[`EXPLAINER.md`](EXPLAINER.md), for a judge-ready demo script see
+[`DEMO.md`](DEMO.md), and for how to exercise every detector by hand see
+[`TESTING.md`](TESTING.md).
+
 ---
 
 ## The thesis
@@ -55,6 +60,8 @@ stateless by construction.
 
 ## Quickstart
 
+Requires Python 3.12 (pinned in `runtime.txt`).
+
 ```bash
 pip install -r requirements.txt
 python -m eval.run_scenarios          # stateless vs session-aware detection
@@ -68,6 +75,37 @@ lexical fallbacks and say so in the output.
 pipeline and reports the threshold the conformal guarantee selects. At a small
 sample it *refuses* the 5% budget and says so — the number is derived, never
 hand-typed. `--write` patches the policy; `--alpha` sets the risk budget.
+
+### The web console
+
+```bash
+uvicorn preflight.proxy:app --port 8000 --app-dir src
+# then open http://localhost:8000/console/live
+```
+
+This starts in **demo mode**: no `UPSTREAM_API_KEY` is set, so the *full
+detection pipeline still runs* on everything you send, it just returns a
+placeholder instead of a real model answer — `GET /health` reports
+`demo_mode: true`. Set `UPSTREAM_API_KEY` (an OpenRouter key) to proxy to a
+real model and get real answers scored live. The console auto-seeds the 7
+adversarial replay scenarios into the ledger on first start, so **Live**,
+**Governance**, and **Queue** are populated immediately — **Chat** is the tab
+for driving the pipeline yourself, and **Showdown** runs the stateless-vs-
+session-aware comparison from the Results table above, live, in the browser.
+
+### Screenshots
+
+| Live oversight | Showdown — 67% vs 100%, live |
+|---|---|
+| ![Live console — session flight strips and action distribution](docs/screenshots/console-live.png) | ![Showdown — stateless vs session-aware detection rate, run live in the browser](docs/screenshots/console-showdown.png) |
+
+| Session trace — per-turn risk | Governance — ledger + metrics |
+|---|---|
+| ![Session trace — response risk, session risk, and detector findings for one turn](docs/screenshots/console-session.png) | ![Governance — metrics and tamper-evident ledger](docs/screenshots/console-governance.png) |
+
+| Chat console — the interactive pipeline tester |
+|---|
+| ![Chat console — the interactive pipeline tester](docs/screenshots/console-chat.png) |
 
 ---
 
